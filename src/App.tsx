@@ -159,22 +159,80 @@ export default function App() {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [billingAlerts, setBillingAlerts] = useState<Record<string, number>>({}); // orderId -> lastNotifiedLevel
   const [dismissedAlerts, setDismissedAlerts] = useState<Record<string, number>>({}); // orderId -> dismissedLevel
+  const [dismissedOverdue, setDismissedOverdue] = useState<Record<string, boolean>>({}); // orderId -> isDismissed
 
-  const playSound = (type: 'new-order' | 'threshold' | 'billing') => {
-    let url = '';
-    switch (type) {
-      case 'new-order':
-        url = 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'; // Decent new order sound
-        break;
-      case 'threshold':
-        url = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'; // Threshold alert
-        break;
-      case 'billing':
-        url = 'https://assets.mixkit.co/active_storage/sfx/1003/1003-preview.mp3'; // Louder warning for billing
-        break;
+  const overdueAudioRef = useRef<HTMLAudioElement | null>(null);
+  const billingAudioRef = useRef<HTMLAudioElement | null>(null);
+  const billingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const playSound = (type: 'new-order' | 'threshold' | 'billing' | 'overdue') => {
+    const urls = {
+      'new-order': '/845147__sadiquecat__airplane-ding.wav', // Local Airplane Ding
+      'threshold': '/snorcon-low-battery-421820.mp3', // Snorcorn Low Battery
+      'billing': '/49053354-electronic-ping-305767.mp3', // Electronic Ping
+      'overdue': '/freesound_community-car-seatbelt-alarm-86950.mp3'  // Car Seatbelt Alarm
+    };
+
+    const url = urls[type];
+    
+    // For one-shot sounds
+    if (type === 'new-order' || type === 'threshold') {
+      const audio = new Audio(url);
+      audio.preload = 'auto';
+      audio.play().catch(e => {
+        if (e.name !== 'NotAllowedError') console.error(`Audio play failed for ${type}:`, e);
+      });
+      return;
     }
-    const audio = new Audio(url);
-    audio.play().catch(e => console.error("Audio play failed:", e));
+
+    // For looping sounds
+    if (type === 'overdue') {
+      if (!overdueAudioRef.current) {
+        const audio = new Audio(url);
+        audio.preload = 'auto';
+        audio.loop = true;
+        audio.play().catch(e => {
+          if (e.name !== 'NotAllowedError') console.error(`Audio play failed for ${type}:`, e);
+        });
+        overdueAudioRef.current = audio;
+      }
+    }
+
+    if (type === 'billing') {
+      if (!billingIntervalRef.current) {
+        const audio = new Audio(url);
+        audio.preload = 'auto';
+        const playPing = () => {
+          audio.currentTime = 0;
+          audio.play().catch(e => {
+            if (e.name !== 'NotAllowedError') console.error(`Audio play failed for ${type}:`, e);
+          });
+        };
+        playPing();
+        billingIntervalRef.current = setInterval(playPing, 1000);
+        billingAudioRef.current = audio;
+      }
+    }
+  };
+
+  const stopSound = (type: 'billing' | 'overdue') => {
+    if (type === 'overdue') {
+      if (overdueAudioRef.current) {
+        overdueAudioRef.current.pause();
+        overdueAudioRef.current.currentTime = 0;
+        overdueAudioRef.current = null;
+      }
+    }
+    if (type === 'billing') {
+      if (billingIntervalRef.current) {
+        clearInterval(billingIntervalRef.current);
+        billingIntervalRef.current = null;
+      }
+      if (billingAudioRef.current) {
+        billingAudioRef.current.pause();
+        billingAudioRef.current = null;
+      }
+    }
   };
 
   const playAlertSound = () => playSound('threshold');
@@ -316,8 +374,10 @@ export default function App() {
       const now = Date.now();
       const x = settings.billingAlertThreshold;
       const y = settings.billingRepeatInterval;
+      let hasActiveAlert = false;
 
-      orders.filter(o => o.status === 'to-bill' && o.servedTimestamp).forEach(order => {
+      // Only alert if NOT paid
+      orders.filter(o => o.status === 'to-bill' && o.servedTimestamp && !o.isPaid).forEach(order => {
         const elapsed = (now - (order.servedTimestamp || 0)) / 60000;
         let currentLevel = 0;
 
@@ -332,9 +392,12 @@ export default function App() {
           const lastLevel = billingAlerts[order.id] || 0;
           const dismissedLevel = dismissedAlerts[order.id] || 0;
 
+          if (currentLevel > dismissedLevel) {
+            hasActiveAlert = true;
+          }
+
           if (currentLevel > lastLevel && currentLevel > dismissedLevel) {
-            // Trigger Alert
-            playSound('billing');
+            // Trigger Notification
             const title = "Billing Reminder";
             const options = {
               body: `Order #${order.orderNo} has been waiting for billing for ${Math.round(elapsed)} mins!`,
@@ -342,7 +405,8 @@ export default function App() {
               tag: `billing_${order.id}`,
               vibrate: [200, 100, 200],
               actions: [
-                { action: 'dismiss', title: 'Dismiss' }
+                { action: 'dismiss', title: 'Dismiss' },
+                { action: 'dismiss_all', title: 'Dismiss All' }
               ]
             };
 
@@ -364,10 +428,145 @@ export default function App() {
           }
         }
       });
-    }, 3000); // Check every 3 seconds for repeating sound
 
-    return () => clearInterval(interval);
+      if (hasActiveAlert) {
+        playSound('billing');
+      } else {
+        stopSound('billing');
+      }
+    }, 500); // Check every half second
+
+    return () => {
+      clearInterval(interval);
+      stopSound('billing');
+    };
   }, [orders, settings, billingAlerts, dismissedAlerts]);
+
+  // Overdue Alert Logic
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const overdueOrders = orders.filter(o => o.status === 'active');
+      
+      let hasOverdue = false;
+      overdueOrders.forEach(order => {
+        const totalTime = order.customTime || calculateOrderTime(order.items);
+        const elapsed = (now - order.timestamp) / 60000;
+        
+        if (elapsed > totalTime) {
+          if (!dismissedOverdue[order.id]) {
+            hasOverdue = true;
+          }
+          const notifiedKey = `overdue_${order.id}`;
+          // We play sound every 3s if any order is overdue, but only show notification once
+          if (!localStorage.getItem(notifiedKey)) {
+            if (Notification.permission === 'granted') {
+              const title = "Order Overdue!";
+              const options = {
+                body: `Order #${order.orderNo} is overdue and not served!`,
+                icon: settings.companyLogo || "https://picsum.photos/seed/pos/192/192",
+                tag: `overdue_${order.id}`,
+                vibrate: [500, 100, 500],
+                actions: [
+                  { action: 'dismiss', title: 'Dismiss' },
+                  { action: 'dismiss_all', title: 'Dismiss All' }
+                ]
+              };
+              if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.ready.then(registration => {
+                  registration.showNotification(title, options as any);
+                });
+              } else {
+                new Notification(title, options);
+              }
+            }
+            localStorage.setItem(notifiedKey, 'true');
+            setToast({ 
+              message: `Order Overdue: #${order.orderNo}`,
+              orderId: order.id,
+              level: 999 // Special level for overdue
+            });
+          }
+        }
+      });
+
+      if (hasOverdue) {
+        playSound('overdue');
+      } else {
+        stopSound('overdue');
+      }
+    }, 1000); // Check every second
+
+    return () => {
+      clearInterval(interval);
+      stopSound('overdue');
+    };
+  }, [orders, settings]);
+
+  const dismissAlert = (orderId: string) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+    if (order.status === 'to-bill') {
+      const now = Date.now();
+      const elapsed = (now - (order.servedTimestamp || 0)) / 60000;
+      const x = settings.billingAlertThreshold;
+      const y = settings.billingRepeatInterval;
+      let currentLevel = 0;
+      if (elapsed >= x + y) {
+        const extraTime = elapsed - (x + y);
+        currentLevel = 2 + Math.floor(extraTime / (y / 4));
+      } else if (elapsed >= x) {
+        currentLevel = 1;
+      }
+      setDismissedAlerts(prev => ({ ...prev, [orderId]: currentLevel }));
+    } else if (order.status === 'active') {
+      setDismissedOverdue(prev => ({ ...prev, [orderId]: true }));
+    }
+  };
+
+  const dismissAllAlerts = () => {
+    const now = Date.now();
+    const newBillingDismissed = { ...dismissedAlerts };
+    const newOverdueDismissed = { ...dismissedOverdue };
+    
+    orders.forEach(order => {
+      if (order.status === 'to-bill') {
+        const elapsed = (now - (order.servedTimestamp || 0)) / 60000;
+        const x = settings.billingAlertThreshold;
+        const y = settings.billingRepeatInterval;
+        let currentLevel = 0;
+        if (elapsed >= x + y) {
+          const extraTime = elapsed - (x + y);
+          currentLevel = 2 + Math.floor(extraTime / (y / 4));
+        } else if (elapsed >= x) {
+          currentLevel = 1;
+        }
+        if (currentLevel > 0) newBillingDismissed[order.id] = currentLevel;
+      } else if (order.status === 'active') {
+        const totalTime = order.customTime || calculateOrderTime(order.items);
+        const elapsed = (now - order.timestamp) / 60000;
+        if (elapsed > totalTime) newOverdueDismissed[order.id] = true;
+      }
+    });
+    
+    setDismissedAlerts(newBillingDismissed);
+    setDismissedOverdue(newOverdueDismissed);
+    setToast(null);
+  };
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'DISMISS_ALERT') {
+        dismissAlert(event.data.orderId);
+      } else if (event.data.type === 'DISMISS_ALL') {
+        dismissAllAlerts();
+      }
+    };
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleMessage);
+      return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
+    }
+  }, [orders, settings, dismissedAlerts, dismissedOverdue]);
 
   useEffect(() => {
     if (toast) {
@@ -680,6 +879,11 @@ export default function App() {
                   setViewingBill={(val: any) => openModal(setViewingBill, val, 'bill-details')}
                   setToast={setToast}
                   onEdit={startEditingOrder}
+                  onDismissAlert={dismissAlert}
+                  settings={settings}
+                  billingAlerts={billingAlerts}
+                  dismissedAlerts={dismissedAlerts}
+                  dismissedOverdue={dismissedOverdue}
                 />
               ))}
             </motion.div>
@@ -701,7 +905,7 @@ export default function App() {
           className="px-4"
         >
           {activeTab === 'home' && renderHome()}
-          {activeTab === 'orders' && <OrdersView orders={orders} updateStatus={updateOrderStatus} deleteOrder={deleteOrder} setSelectedOrder={(val: any) => openModal(setSelectedOrder, val, 'order-details')} openNewOrder={() => openModal(setIsOrderModalOpen, true, 'order-create')} bills={bills} setViewingBill={(val: any) => openModal(setViewingBill, val, 'bill-details')} setToast={setToast} onEdit={startEditingOrder} />}
+          {activeTab === 'orders' && <OrdersView orders={orders} updateStatus={updateOrderStatus} deleteOrder={deleteOrder} setSelectedOrder={(val: any) => openModal(setSelectedOrder, val, 'order-details')} openNewOrder={() => openModal(setIsOrderModalOpen, true, 'order-create')} bills={bills} setViewingBill={(val: any) => openModal(setViewingBill, val, 'bill-details')} setToast={setToast} onEdit={startEditingOrder} onDismissAlert={dismissAlert} settings={settings} billingAlerts={billingAlerts} dismissedAlerts={dismissedAlerts} dismissedOverdue={dismissedOverdue} />}
           {activeTab === 'bills' && <BillsView bills={bills} deleteBill={deleteBill} settings={settings} orders={orders} setViewingOrder={(val: any) => openModal(setViewingOrder, val, 'order-view')} setToast={setToast} setViewingBill={(val: any) => openModal(setViewingBill, val, 'bill-details')} />}
           {activeTab === 'menu' && <MenuView menu={menu} setMenu={setMenu} setEditingItem={(val: any) => openModal(setEditingItem, val, 'menu-edit')} deleteItem={deleteMenuItem} setIsMenuModalOpen={(val: any) => openModal(setIsMenuModalOpen, val, 'menu-manage')} settings={settings} saveSettings={saveSettings} sortMenu={sortMenu} />}
           {activeTab === 'settings' && <SettingsView settings={settings} saveSettings={saveSettings} bills={bills} setBills={setBills} menu={menu} setMenu={setMenu} orders={orders} setOrders={setOrders} />}
@@ -721,17 +925,29 @@ export default function App() {
           >
             <span>{toast.message}</span>
             {toast.orderId && (
-              <button 
-                onClick={() => {
-                  if (toast.orderId && toast.level) {
-                    setDismissedAlerts(prev => ({ ...prev, [toast.orderId!]: toast.level! }));
-                  }
-                  setToast(null);
-                }}
-                className="bg-black/10 px-2 py-1 rounded-full text-[10px] hover:bg-black/20 transition-colors"
-              >
-                Dismiss
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => {
+                    if (toast.orderId) {
+                      if (toast.level === 999) {
+                        setDismissedOverdue(prev => ({ ...prev, [toast.orderId!]: true }));
+                      } else if (toast.level) {
+                        setDismissedAlerts(prev => ({ ...prev, [toast.orderId!]: toast.level! }));
+                      }
+                    }
+                    setToast(null);
+                  }}
+                  className="bg-black/10 px-2 py-1 rounded-full text-[10px] hover:bg-black/20 transition-colors"
+                >
+                  Dismiss
+                </button>
+                <button 
+                  onClick={dismissAllAlerts}
+                  className="bg-black/10 px-2 py-1 rounded-full text-[10px] hover:bg-black/20 transition-colors"
+                >
+                  Dismiss All
+                </button>
+              </div>
             )}
           </motion.div>
         )}
@@ -836,7 +1052,7 @@ export default function App() {
 
 // --- Sub-Views ---
 
-const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, setViewingBill, setToast, onEdit }: any) => {
+const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, setViewingBill, setToast, onEdit, onDismissAlert, settings, billingAlerts, dismissedAlerts, dismissedOverdue }: any) => {
   const [timeLeft, setTimeLeft] = useState(0);
 
   useEffect(() => {
@@ -871,7 +1087,10 @@ const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, 
         hidden: { opacity: 0, y: 10 },
         visible: { opacity: 1, y: 0 }
       }}
-      onClick={() => setSelectedOrder(order)}
+      onClick={() => {
+        setSelectedOrder(order);
+        onDismissAlert(order.id);
+      }}
       className={cn(
         "bg-white/5 border rounded-[20px] p-4 space-y-3 active:scale-[0.98] transition-all mx-1 my-1",
         order.status === 'active' ? "border-accent animate-smooth-flicker" : 
@@ -881,7 +1100,14 @@ const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, 
       <div className="flex justify-between items-start">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Order #{order.orderNo}</p>
+            <p className={cn(
+              "text-[10px] font-bold text-white/40 uppercase tracking-widest",
+              ((order.status === 'active' && (Date.now() - order.timestamp) / 60000 > (order.customTime || calculateOrderTime(order.items)) && !dismissedOverdue[order.id]) ||
+               (order.status === 'to-bill' && order.servedTimestamp && !order.isPaid && (Date.now() - order.servedTimestamp) / 60000 >= settings.billingAlertThreshold && (dismissedAlerts[order.id] || 0) < (billingAlerts[order.id] || 0))) && 
+              "text-accent animate-glow-flicker"
+            )}>
+              Order #{order.orderNo}
+            </p>
             {order.tableNo && (
               <span className="bg-accent/10 text-accent text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">Table {order.tableNo}</span>
             )}
@@ -988,7 +1214,7 @@ const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, 
   );
 };
 
-const OrdersView = ({ orders, updateStatus, deleteOrder, setSelectedOrder, openNewOrder, bills, setViewingBill, setToast, onEdit }: any) => {
+const OrdersView = ({ orders, updateStatus, deleteOrder, setSelectedOrder, openNewOrder, bills, setViewingBill, setToast, onEdit, onDismissAlert, settings, billingAlerts, dismissedAlerts, dismissedOverdue }: any) => {
   const [filter, setFilter] = useState('all');
   const tabs = ['all', 'active', 'to-bill', 'completed'];
 
@@ -1048,6 +1274,11 @@ const OrdersView = ({ orders, updateStatus, deleteOrder, setSelectedOrder, openN
             setViewingBill={setViewingBill}
             setToast={setToast}
             onEdit={onEdit}
+            onDismissAlert={onDismissAlert}
+            settings={settings}
+            billingAlerts={billingAlerts}
+            dismissedAlerts={dismissedAlerts}
+            dismissedOverdue={dismissedOverdue}
           />
         ))}
       </motion.div>
@@ -1092,27 +1323,33 @@ const OrderDetailView = ({ order, onEdit }: { order: Order, onEdit: (o: Order) =
             </button>
           )}
         </div>
-        {order.items.map((item, idx) => (
-          <div key={idx} className="bg-white/5 border border-white/5 p-4 rounded-2xl space-y-2">
-            <div className="flex justify-between font-bold">
-              <span>{item.quantity}x {item.name}</span>
-              <span>{formatCurrency(item.price * item.quantity)}</span>
-            </div>
-            {item.instructions && (
-              <p className="text-xs text-white/50 italic">Note: {item.instructions}</p>
-            )}
-            {item.extras.length > 0 && (
-              <div className="pl-4 border-l border-white/10 space-y-1">
-                {item.extras.map((e, eidx) => (
-                  <div key={eidx} className="flex justify-between text-xs text-white/60">
-                    <span>+ {e.quantity}x {e.name}</span>
-                    <span>{formatCurrency(e.price * e.quantity)}</span>
-                  </div>
-                ))}
+        {order.items.map((item, idx) => {
+          const itemSubtotal = (item.price * item.quantity) + item.extras.reduce((s:any,e:any)=>s+(e.price*e.quantity),0);
+          return (
+            <div key={idx} className="bg-white/5 border border-white/5 p-4 rounded-2xl space-y-2">
+              <div className="flex justify-between font-bold">
+                <span>{item.quantity}x {item.name}</span>
+                <span>{formatCurrency(itemSubtotal)}</span>
               </div>
-            )}
-          </div>
-        ))}
+              <div className="flex justify-between text-[10px] text-white/40 pl-4">
+                <span>Item price - {formatCurrency(item.price)}</span>
+              </div>
+              {item.instructions && (
+                <p className="text-xs text-white/50 italic pl-4">Note: {item.instructions}</p>
+              )}
+              {item.extras.length > 0 && (
+                <div className="pl-4 border-l border-white/10 space-y-1">
+                  {item.extras.map((e, eidx) => (
+                    <div key={eidx} className="flex justify-between text-xs text-white/60">
+                      <span>+ {e.quantity}x {e.name}</span>
+                      <span>{formatCurrency(e.price * e.quantity)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="pt-4 border-t border-white/10">
@@ -1273,51 +1510,6 @@ const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructi
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-        {categories.map(cat => (
-          <button
-            key={cat as string}
-            onClick={() => setActiveCategory(cat as string)}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border transition-all whitespace-nowrap",
-              activeCategory === cat ? "bg-accent border-accent text-white" : "bg-white/5 border-white/10 text-white/50"
-            )}
-          >
-            {cat as string}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        {filteredMenu.map((item: any) => (
-          <button 
-            key={item.id}
-            onClick={() => {
-              setSelectedItem(item);
-              setItemExtras(item.extras.map((e: any) => ({ ...e, quantity: 0 })));
-            }}
-            className="bg-white/5 border border-white/10 rounded-[20px] overflow-hidden text-left active:scale-95 transition-all"
-          >
-            <div className="aspect-square bg-white/5 relative">
-              {item.image ? (
-                <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-white/10">
-                  <UtensilsCrossed size={32} />
-                </div>
-              )}
-              <div className="absolute bottom-1.5 right-1.5 bg-black/60 blur-overlay px-1.5 py-0.5 rounded-md text-[8px] font-bold">
-                {item.prepTime}m
-              </div>
-            </div>
-            <div className="p-3">
-              <p className="font-bold text-sm truncate">{item.name}</p>
-              <p className="text-accent font-bold text-xs">{formatCurrency(item.price)}</p>
-            </div>
-          </button>
-        ))}
-      </div>
-
       {cart.length > 0 && (
         <div className="space-y-4 pt-4 border-t border-white/10">
           <div className="flex justify-between items-center">
@@ -1392,6 +1584,51 @@ const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructi
           </div>
         </div>
       )}
+
+      <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+        {categories.map(cat => (
+          <button
+            key={cat as string}
+            onClick={() => setActiveCategory(cat as string)}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border transition-all whitespace-nowrap",
+              activeCategory === cat ? "bg-accent border-accent text-white" : "bg-white/5 border-white/10 text-white/50"
+            )}
+          >
+            {cat as string}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 pb-4">
+        {filteredMenu.map((item: any) => (
+          <button 
+            key={item.id}
+            onClick={() => {
+              setSelectedItem(item);
+              setItemExtras(item.extras.map((e: any) => ({ ...e, quantity: 0 })));
+            }}
+            className="bg-white/5 border border-white/10 rounded-[20px] overflow-hidden text-left active:scale-95 transition-all"
+          >
+            <div className="aspect-square bg-white/5 relative">
+              {item.image ? (
+                <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white/10">
+                  <UtensilsCrossed size={32} />
+                </div>
+              )}
+              <div className="absolute bottom-1.5 right-1.5 bg-black/60 blur-overlay px-1.5 py-0.5 rounded-md text-[8px] font-bold">
+                {item.prepTime}m
+              </div>
+            </div>
+            <div className="p-3">
+              <p className="font-bold text-sm truncate">{item.name}</p>
+              <p className="text-accent font-bold text-xs">{formatCurrency(item.price)}</p>
+            </div>
+          </button>
+        ))}
+      </div>
 
       {/* Item Customization Modal */}
       <Modal isOpen={!!selectedItem} onClose={onBack} title={selectedItem?.name || "Customize Item"}>
