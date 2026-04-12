@@ -153,10 +153,17 @@ export default function App() {
   const [customOrderTime, setCustomOrderTime] = useState<number | ''>('');
   const [tableNo, setTableNo] = useState('');
 
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; orderId?: string; level?: number } | null>(null);
   const backPressCount = useRef(0);
 
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [billingAlerts, setBillingAlerts] = useState<Record<string, number>>({}); // orderId -> lastNotifiedLevel
+  const [dismissedAlerts, setDismissedAlerts] = useState<Record<string, number>>({}); // orderId -> dismissedLevel
+
+  const playAlertSound = () => {
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    audio.play().catch(e => console.error("Audio play failed:", e));
+  };
 
   const closeModalByName = (name: string) => {
     if (name === 'order-create') setIsOrderModalOpen(false);
@@ -224,7 +231,7 @@ export default function App() {
           backPressCount.current = 0;
         } else {
           if (backPressCount.current === 0) {
-            setToast("Press back again to exit");
+            setToast({ message: "Press back again to exit" });
             backPressCount.current++;
             setTimeout(() => { backPressCount.current = 0; }, 2000);
             window.history.pushState(null, ''); // Keep user on page
@@ -285,6 +292,64 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [orders, settings]);
+
+  // Billing Alert Logic
+  useEffect(() => {
+    if (!settings.enableBillingAlerts) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const x = settings.billingAlertThreshold;
+      const y = settings.billingRepeatInterval;
+
+      orders.filter(o => o.status === 'to-bill' && o.servedTimestamp).forEach(order => {
+        const elapsed = (now - (order.servedTimestamp || 0)) / 60000;
+        let currentLevel = 0;
+
+        if (elapsed >= x + y) {
+          const extraTime = elapsed - (x + y);
+          currentLevel = 2 + Math.floor(extraTime / (y / 4));
+        } else if (elapsed >= x) {
+          currentLevel = 1;
+        }
+
+        if (currentLevel > 0) {
+          const lastLevel = billingAlerts[order.id] || 0;
+          const dismissedLevel = dismissedAlerts[order.id] || 0;
+
+          if (currentLevel > lastLevel && currentLevel > dismissedLevel) {
+            // Trigger Alert
+            playAlertSound();
+            const title = "Billing Reminder";
+            const options = {
+              body: `Order #${order.orderNo} has been waiting for billing for ${Math.round(elapsed)} mins!`,
+              icon: settings.companyLogo || "https://picsum.photos/seed/pos/192/192",
+              tag: `billing_${order.id}`,
+              vibrate: [200, 100, 200]
+            };
+
+            if (Notification.permission === 'granted') {
+              if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.ready.then(registration => {
+                  registration.showNotification(title, options as any);
+                });
+              } else {
+                new Notification(title, options);
+              }
+            }
+            setToast({ 
+              message: `Billing Alert: Order #${order.orderNo} (${Math.round(elapsed)}m)`,
+              orderId: order.id,
+              level: currentLevel
+            });
+            setBillingAlerts(prev => ({ ...prev, [order.id]: currentLevel }));
+          }
+        }
+      });
+    }, 10000); // Check every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [orders, settings, billingAlerts]);
 
   useEffect(() => {
     if (toast) {
@@ -367,8 +432,8 @@ export default function App() {
     setIsOrderModalOpen(false);
     setEditingOrder(null);
     
-    navigateTo('orders', true);
-    setToast(editingOrder ? "Order Updated!" : "Order Placed!");
+    if (activeTab !== 'orders') navigateTo('orders', true);
+    setToast({ message: editingOrder ? "Order Updated!" : "Order Placed!" });
   };
 
   const startEditingOrder = (order: Order) => {
@@ -436,7 +501,7 @@ export default function App() {
     // Explicitly close modal first to prevent double clicks
     setBillingOrder(null);
     
-    setToast("Bill Saved Successfully!");
+    setToast({ message: "Bill Saved Successfully!" });
     navigateTo('bills', true);
   };
 
@@ -629,9 +694,22 @@ export default function App() {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md text-black px-4 py-2 rounded-full font-bold text-xs shadow-xl z-[200]"
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md text-black px-4 py-2 rounded-full font-bold text-xs shadow-xl z-[200] flex items-center gap-3"
           >
-            {toast}
+            <span>{toast.message}</span>
+            {toast.orderId && (
+              <button 
+                onClick={() => {
+                  if (toast.orderId && toast.level) {
+                    setDismissedAlerts(prev => ({ ...prev, [toast.orderId!]: toast.level! }));
+                  }
+                  setToast(null);
+                }}
+                className="bg-black/10 px-2 py-1 rounded-full text-[10px] hover:bg-black/20 transition-colors"
+              >
+                Dismiss
+              </button>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -758,7 +836,7 @@ const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, 
     if (bill) {
       setViewingBill(bill);
     } else {
-      setToast("Corresponding Bill for Order was Deleted or Missing");
+      setToast({ message: "Corresponding Bill for Order was Deleted or Missing" });
     }
   };
 
@@ -1521,7 +1599,7 @@ const BillsView = ({ bills, deleteBill, settings, orders, setViewingOrder, setTo
     if (order) {
       setViewingOrder(order);
     } else {
-      setToast("Corresponding Order for Bill was Deleted or Missing");
+      setToast({ message: "Corresponding Order for Bill was Deleted or Missing" });
     }
   };
 
@@ -2181,6 +2259,34 @@ const SettingsView = ({ settings, saveSettings, bills, setBills, menu, setMenu, 
                 <input type="number" value={formData.notificationThreshold} onChange={e => setFormData({ ...formData, notificationThreshold: Number(e.target.value) })} className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm outline-none" />
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-sm font-bold uppercase tracking-widest text-white/40">Billing Alerts</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between bg-white/5 p-4 rounded-xl border border-white/10">
+              <span className="text-xs font-bold uppercase tracking-widest text-white/40">Enable Billing Alerts</span>
+              <button 
+                onClick={() => setFormData({ ...formData, enableBillingAlerts: !formData.enableBillingAlerts })}
+                className={cn("w-12 h-6 rounded-full transition-all relative", formData.enableBillingAlerts ? "bg-accent" : "bg-white/10")}
+              >
+                <div className={cn("absolute top-1 w-4 h-4 rounded-full bg-white transition-all", formData.enableBillingAlerts ? "right-1" : "left-1")} />
+              </button>
+            </div>
+            <div className="flex gap-4">
+              <div className="flex-1 space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 ml-2">First Alert (min)</p>
+                <input type="number" value={formData.billingAlertThreshold} onChange={e => setFormData({ ...formData, billingAlertThreshold: Number(e.target.value) })} className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm outline-none" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 ml-2">Repeat Interval (min)</p>
+                <input type="number" value={formData.billingRepeatInterval} onChange={e => setFormData({ ...formData, billingRepeatInterval: Number(e.target.value) })} className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm outline-none" />
+              </div>
+            </div>
+            <p className="text-[10px] text-white/30 italic px-2">
+              * Subsequent reminders will repeat every {formData.billingRepeatInterval / 4} minutes after the second alert.
+            </p>
           </div>
         </div>
 

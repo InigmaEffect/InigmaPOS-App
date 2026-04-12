@@ -62,6 +62,9 @@ export interface Settings {
   billFooter: string;
   defaultTax: number;
   notificationThreshold: number;
+  billingAlertThreshold: number;
+  billingRepeatInterval: number;
+  enableBillingAlerts: boolean;
   customBillFields: string[];
   menuSortMethod: 'alphabetical' | 'category' | 'recent' | 'custom';
   menuSortDirection: 'asc' | 'desc';
@@ -103,6 +106,9 @@ export const defaultSettings: Settings = {
   billFooter: 'Thank you for your visit!',
   defaultTax: 0,
   notificationThreshold: 20,
+  billingAlertThreshold: 10,
+  billingRepeatInterval: 5,
+  enableBillingAlerts: true,
   customBillFields: [],
   menuSortMethod: 'custom',
   menuSortDirection: 'asc',
