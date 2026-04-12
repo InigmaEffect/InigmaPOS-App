@@ -956,6 +956,13 @@ const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructi
   const [itemInstructions, setItemInstructions] = useState('');
   const [itemExtras, setItemExtras] = useState<any[]>([]);
   const [quantity, setQuantity] = useState(1);
+  const [activeCategory, setActiveCategory] = useState('All');
+
+  const categories = ['All', ...Array.from(new Set(menu.map((item: any) => item.category).filter(Boolean)))];
+  
+  const filteredMenu = activeCategory === 'All' 
+    ? menu 
+    : menu.filter((item: any) => item.category === activeCategory);
 
   const addToCart = () => {
     if (!selectedItem) return;
@@ -986,8 +993,23 @@ const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructi
 
   return (
     <div className="space-y-6">
+      <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+        {categories.map(cat => (
+          <button
+            key={cat as string}
+            onClick={() => setActiveCategory(cat as string)}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border transition-all whitespace-nowrap",
+              activeCategory === cat ? "bg-accent border-accent text-white" : "bg-white/5 border-white/10 text-white/50"
+            )}
+          >
+            {cat as string}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
-        {menu.map((item: any) => (
+        {filteredMenu.map((item: any) => (
           <button 
             key={item.id}
             onClick={() => {
