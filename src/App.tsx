@@ -160,10 +160,24 @@ export default function App() {
   const [billingAlerts, setBillingAlerts] = useState<Record<string, number>>({}); // orderId -> lastNotifiedLevel
   const [dismissedAlerts, setDismissedAlerts] = useState<Record<string, number>>({}); // orderId -> dismissedLevel
 
-  const playAlertSound = () => {
-    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+  const playSound = (type: 'new-order' | 'threshold' | 'billing') => {
+    let url = '';
+    switch (type) {
+      case 'new-order':
+        url = 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'; // Decent new order sound
+        break;
+      case 'threshold':
+        url = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'; // Threshold alert
+        break;
+      case 'billing':
+        url = 'https://assets.mixkit.co/active_storage/sfx/1003/1003-preview.mp3'; // Louder warning for billing
+        break;
+    }
+    const audio = new Audio(url);
     audio.play().catch(e => console.error("Audio play failed:", e));
   };
+
+  const playAlertSound = () => playSound('threshold');
 
   const closeModalByName = (name: string) => {
     if (name === 'order-create') setIsOrderModalOpen(false);
@@ -268,6 +282,7 @@ export default function App() {
         if (remainingPercent <= settings.notificationThreshold && remainingPercent > 0) {
           const notifiedKey = `notified_${order.id}_${settings.notificationThreshold}`;
           if (!localStorage.getItem(notifiedKey)) {
+            playSound('threshold');
             if (Notification.permission === 'granted') {
               if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                 navigator.serviceWorker.ready.then(registration => {
@@ -319,13 +334,16 @@ export default function App() {
 
           if (currentLevel > lastLevel && currentLevel > dismissedLevel) {
             // Trigger Alert
-            playAlertSound();
+            playSound('billing');
             const title = "Billing Reminder";
             const options = {
               body: `Order #${order.orderNo} has been waiting for billing for ${Math.round(elapsed)} mins!`,
               icon: settings.companyLogo || "https://picsum.photos/seed/pos/192/192",
               tag: `billing_${order.id}`,
-              vibrate: [200, 100, 200]
+              vibrate: [200, 100, 200],
+              actions: [
+                { action: 'dismiss', title: 'Dismiss' }
+              ]
             };
 
             if (Notification.permission === 'granted') {
@@ -346,10 +364,10 @@ export default function App() {
           }
         }
       });
-    }, 10000); // Check every 10 seconds
+    }, 3000); // Check every 3 seconds for repeating sound
 
     return () => clearInterval(interval);
-  }, [orders, settings, billingAlerts]);
+  }, [orders, settings, billingAlerts, dismissedAlerts]);
 
   useEffect(() => {
     if (toast) {
@@ -421,6 +439,7 @@ export default function App() {
       };
       await db.add('orders', newOrder);
       setOrders(prev => [...prev, newOrder]);
+      playSound('new-order');
     }
 
     setCart([]);
@@ -446,7 +465,7 @@ export default function App() {
     setTableNo(order.tableNo || '');
   };
 
-  const updateOrderStatus = async (orderId: string, status: 'to-bill' | 'completed') => {
+  const updateOrderStatus = async (orderId: string, status: 'to-bill' | 'completed' | 'paid') => {
     const db = await getDB();
     const order = await db.get('orders', orderId);
     if (!order) return;
@@ -456,8 +475,12 @@ export default function App() {
       return;
     }
 
-    order.status = status;
-    if (status === 'to-bill') order.servedTimestamp = Date.now();
+    if (status === 'paid') {
+      order.isPaid = true;
+    } else {
+      order.status = status;
+      if (status === 'to-bill') order.servedTimestamp = Date.now();
+    }
     
     await db.put('orders', order);
     setOrders(prev => prev.map(o => o.id === orderId ? order : o));
@@ -862,6 +885,9 @@ const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, 
             {order.tableNo && (
               <span className="bg-accent/10 text-accent text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">Table {order.tableNo}</span>
             )}
+            {order.isPaid && (
+              <span className="bg-green-500/10 text-green-500 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">PAID</span>
+            )}
           </div>
           <p className="text-lg font-bold text-accent">{formatCurrency(totalAmount)}</p>
           <div className="mt-1 space-y-0.5">
@@ -926,6 +952,14 @@ const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, 
           </button>
           {order.status === 'active' && (
             <>
+              {!order.isPaid && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'paid'); }}
+                  className="bg-green-500/20 text-green-500 px-3 py-1.5 rounded-lg text-[10px] font-bold"
+                >
+                  Mark Paid
+                </button>
+              )}
               <button 
                 onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'to-bill'); }}
                 className="bg-white/10 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold"

@@ -34,6 +34,7 @@ export interface Order {
   customTime?: number;
   overallInstructions: string;
   servedTimestamp?: number;
+  isPaid?: boolean;
 }
 
 export interface Bill {
