@@ -336,7 +336,6 @@ export default function App() {
       };
       await db.put('orders', updatedOrder);
       setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
-      setEditingOrder(null);
     } else {
       const newOrder: Order = {
         id: crypto.randomUUID(),
@@ -356,8 +355,9 @@ export default function App() {
     setOverallInstructions('');
     setCustomOrderTime('');
     setTableNo('');
-    setIsOrderModalOpen(false);
-    navigateTo('orders');
+    handleBack();
+    if (activeTab !== 'orders') navigateTo('orders');
+    setToast(editingOrder ? "Order Updated!" : "Order Placed!");
   };
 
   const startEditingOrder = (order: Order) => {
@@ -421,10 +421,9 @@ export default function App() {
     
     setBills(prev => [...prev, newBill]);
     setOrders(prev => prev.map(o => o.id === billingOrder.id ? updatedOrder : o));
-    setIsBillModalOpen(false);
-    setBillingOrder(null);
+    handleBack();
     setToast("Bill Saved Successfully!");
-    navigateTo('bills');
+    if (activeTab !== 'bills') navigateTo('bills');
   };
 
   const deleteBill = async (id: string) => {
@@ -656,6 +655,26 @@ export default function App() {
         {viewingOrder && <OrderDetailView order={viewingOrder} onEdit={startEditingOrder} />}
       </Modal>
 
+      <Modal isOpen={!!editingOrder} onClose={handleBack} title="Edit Order" fullScreen>
+        <OrderCreationView 
+          menu={menu} 
+          onPlaceOrder={handlePlaceOrder} 
+          cart={cart} 
+          setCart={setCart} 
+          overallInstructions={overallInstructions} 
+          setOverallInstructions={setOverallInstructions}
+          customOrderTime={customOrderTime}
+          setCustomOrderTime={setCustomOrderTime}
+          tableNo={tableNo}
+          setTableNo={setTableNo}
+          settings={settings}
+          sortMenu={sortMenu}
+          selectedItem={selectedItem}
+          setSelectedItem={(val: any) => openModal(setSelectedItem, val, 'item-select')}
+          onBack={handleBack}
+        />
+      </Modal>
+
       <Modal isOpen={isMenuModalOpen} onClose={handleBack} title="Manage Menu" fullScreen>
         <div className="space-y-6">
           <div className="flex justify-between items-center">
@@ -693,8 +712,8 @@ export default function App() {
         <MenuItemForm item={editingItem} onSave={(item: any) => { saveMenuItem(item); handleBack(); }} onCancel={handleBack} onDelete={(id: string) => { deleteMenuItem(id); handleBack(); }} />
       </Modal>
 
-      <Modal isOpen={isBillModalOpen} onClose={handleBack} title="Create Bill">
-        {billingOrder && <BillCreationView order={billingOrder} onSave={(bill: any) => { handleCreateBill(bill); handleBack(); }} settings={settings} />}
+      <Modal isOpen={!!billingOrder} onClose={handleBack} title="Create Bill">
+        {billingOrder && <BillCreationView order={billingOrder} onSave={(bill: any) => { handleCreateBill(bill); }} settings={settings} />}
       </Modal>
     </div>
   );
