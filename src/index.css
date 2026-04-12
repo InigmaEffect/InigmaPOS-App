@@ -54,19 +54,21 @@
 @keyframes smooth-flicker {
   0%, 100% { 
     border-color: var(--accent-color, #ff5300); 
-    box-shadow: 0 0 0px var(--accent-color, #ff5300); 
+    opacity: 1;
   }
   50% { 
-    border-color: rgba(255, 255, 255, 0.1); 
-    box-shadow: 0 0 15px var(--accent-color, #ff5300); 
+    border-color: rgba(255, 255, 255, 0.2); 
+    opacity: 0.8;
   }
 }
 
 .animate-smooth-flicker {
-  animation: smooth-flicker 1s ease-in-out infinite;
+  animation: smooth-flicker 2s ease-in-out infinite;
+  will-change: border-color, opacity;
 }
 
 .blur-overlay {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  will-change: backdrop-filter;
 }

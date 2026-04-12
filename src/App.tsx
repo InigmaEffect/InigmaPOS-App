@@ -28,7 +28,7 @@ import html2canvas from 'html2canvas';
 
 // --- Components ---
 
-const BottomNav = ({ activeTab, setActiveTab, counts }: { activeTab: string, setActiveTab: (t: string) => void, counts: any }) => {
+const BottomNav = React.memo(({ activeTab, setActiveTab, counts }: { activeTab: string, setActiveTab: (t: string) => void, counts: any }) => {
   const tabs = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'orders', label: 'Orders', icon: ClipboardList, badge: counts.orders },
@@ -38,8 +38,8 @@ const BottomNav = ({ activeTab, setActiveTab, counts }: { activeTab: string, set
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4">
-      <div className="max-w-md mx-auto bg-black/60 blur-overlay border border-white/10 rounded-[24px] p-1.5 flex justify-between items-center shadow-2xl">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pointer-events-none">
+      <div className="max-w-md mx-auto bg-black/60 blur-overlay border border-white/10 rounded-[24px] p-1.5 flex justify-between items-center shadow-2xl pointer-events-auto">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -65,13 +65,13 @@ const BottomNav = ({ activeTab, setActiveTab, counts }: { activeTab: string, set
       </div>
     </nav>
   );
-};
+});
 
 const Modal = ({ isOpen, onClose, title, children, fullScreen = false }: any) => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center">
+        <div className="fixed inset-0 z-[100] flex items-end justify-center overflow-hidden">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -80,12 +80,13 @@ const Modal = ({ isOpen, onClose, title, children, fullScreen = false }: any) =>
             className="absolute inset-0 bg-black/60 blur-overlay"
           />
           <motion.div
-            initial={{ y: '100%', opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: '100%', opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            style={{ translateZ: 0 }}
             className={cn(
-              "relative w-full bg-bg-dark border-t border-white/10 rounded-t-[32px] overflow-hidden flex flex-col",
+              "relative w-full bg-bg-dark border-t border-white/10 rounded-t-[32px] overflow-hidden flex flex-col will-change-transform",
               fullScreen ? "h-[95vh]" : "max-h-[85vh]"
             )}
           >
@@ -497,11 +498,12 @@ export default function App() {
       <AnimatePresence mode="wait">
         <motion.div
           key={activeTab}
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 1.02 }}
-          transition={{ duration: 0.1, ease: "easeInOut" }}
-          className="px-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          style={{ translateZ: 0 }}
+          className="px-4 will-change-[opacity]"
         >
           {activeTab === 'home' && renderHome()}
           {activeTab === 'orders' && <OrdersView orders={orders} updateStatus={updateOrderStatus} deleteOrder={deleteOrder} setSelectedOrder={setSelectedOrder} openNewOrder={() => setIsOrderModalOpen(true)} bills={bills} setViewingBill={setViewingBill} setToast={setToast} onEdit={startEditingOrder} />}
@@ -528,21 +530,6 @@ export default function App() {
       </AnimatePresence>
 
       {/* Modals */}
-      <Modal isOpen={isOrderModalOpen} onClose={() => setIsOrderModalOpen(false)} title="New Order" fullScreen>
-        <OrderCreationView 
-          menu={menu} 
-          onPlaceOrder={handlePlaceOrder} 
-          cart={cart} 
-          setCart={setCart} 
-          overallInstructions={overallInstructions} 
-          setOverallInstructions={setOverallInstructions}
-          customOrderTime={customOrderTime}
-          setCustomOrderTime={setCustomOrderTime}
-          tableNo={tableNo}
-          setTableNo={setTableNo}
-        />
-      </Modal>
-
       <Modal isOpen={!!selectedOrder} onClose={() => setSelectedOrder(null)} title={`Order #${selectedOrder?.orderNo}`}>
         {selectedOrder && <OrderDetailView order={selectedOrder} onEdit={startEditingOrder} />}
       </Modal>
@@ -562,13 +549,29 @@ export default function App() {
       <Modal isOpen={isBillModalOpen} onClose={() => setIsBillModalOpen(false)} title="Create Bill">
         {billingOrder && <BillCreationView order={billingOrder} onSave={handleCreateBill} settings={settings} />}
       </Modal>
+
+      <Modal isOpen={isOrderModalOpen} onClose={() => setIsOrderModalOpen(false)} title={editingOrder ? "Edit Order" : "New Order"} fullScreen>
+        <OrderCreationView 
+          menu={menu} 
+          onPlaceOrder={handlePlaceOrder} 
+          cart={cart} 
+          setCart={setCart} 
+          overallInstructions={overallInstructions} 
+          setOverallInstructions={setOverallInstructions}
+          customOrderTime={customOrderTime}
+          setCustomOrderTime={setCustomOrderTime}
+          tableNo={tableNo}
+          setTableNo={setTableNo}
+          editingOrder={editingOrder}
+        />
+      </Modal>
     </div>
   );
 }
 
 // --- Sub-Views ---
 
-const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, setViewingBill, setToast, onEdit }: any) => {
+const OrderCard = React.memo(({ order, updateStatus, deleteOrder, setSelectedOrder, bills, setViewingBill, setToast, onEdit }: any) => {
   const [timeLeft, setTimeLeft] = useState(0);
 
   useEffect(() => {
@@ -707,7 +710,7 @@ const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, 
       </div>
     </motion.div>
   );
-};
+});
 
 const OrdersView = ({ orders, updateStatus, deleteOrder, setSelectedOrder, openNewOrder, bills, setViewingBill, setToast, onEdit }: any) => {
   const [filter, setFilter] = useState('all');
