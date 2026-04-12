@@ -157,29 +157,64 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const backPressCount = useRef(0);
 
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+
+  const closeModalByName = (name: string) => {
+    if (name === 'order-create') setIsOrderModalOpen(false);
+    else if (name === 'menu-manage') setIsMenuModalOpen(false);
+    else if (name === 'bill-create') setIsBillModalOpen(false);
+    else if (name === 'order-details') setSelectedOrder(null);
+    else if (name === 'menu-edit') setEditingItem(null);
+    else if (name === 'billing') setBillingOrder(null);
+    else if (name === 'order-edit') setEditingOrder(null);
+    else if (name === 'bill-details') setViewingBill(null);
+    else if (name === 'order-view') setViewingOrder(null);
+    else if (name === 'item-select') setSelectedItem(null);
+  };
+
   const navigateTo = (tab: string) => {
     if (tab !== activeTab) {
       setHistory(prev => [...prev, tab]);
       setActiveTab(tab);
+      window.history.pushState(null, '');
     }
+  };
+
+  const openModal = (setter: (val: any) => void, value: any, name: string) => {
+    setter(value);
+    setHistory(prev => [...prev, `modal:${name}`]);
+    window.history.pushState(null, '');
+  };
+
+  const handleBack = () => {
+    window.history.back();
   };
 
   useEffect(() => {
     loadData();
-    // Back button handling
+    // Initialize history state if empty (shouldn't happen but for safety)
+    if (window.history.state === null) {
+      window.history.replaceState({ root: true }, '');
+    }
+
     const handlePopState = (e: PopStateEvent) => {
       if (history.length > 1) {
         const newHistory = [...history];
-        newHistory.pop();
-        const prevTab = newHistory[newHistory.length - 1];
+        const lastState = newHistory.pop();
+        
+        if (lastState && typeof lastState === 'string' && lastState.startsWith('modal:')) {
+          closeModalByName(lastState.split(':')[1]);
+        } else if (lastState) {
+          const prevTab = newHistory[newHistory.length - 1];
+          setActiveTab(prevTab);
+        }
         setHistory(newHistory);
-        setActiveTab(prevTab);
         backPressCount.current = 0;
       } else {
         if (activeTab !== 'home') {
-          navigateTo('home');
+          setActiveTab('home');
+          setHistory(['home']);
           backPressCount.current = 0;
-          window.history.pushState(null, '');
         } else {
           if (backPressCount.current === 0) {
             setToast("Press back again to exit");
@@ -192,7 +227,7 @@ export default function App() {
         }
       }
     };
-    window.history.pushState(null, '');
+
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [history, activeTab]);
@@ -328,12 +363,11 @@ export default function App() {
   const startEditingOrder = (order: Order) => {
     setSelectedOrder(null);
     setViewingOrder(null);
-    setEditingOrder(order);
+    openModal(setEditingOrder, order, 'order-edit');
     setCart(order.items);
     setOverallInstructions(order.overallInstructions);
     setCustomOrderTime(order.customTime || '');
     setTableNo(order.tableNo || '');
-    setIsOrderModalOpen(true);
   };
 
   const updateOrderStatus = async (orderId: string, status: 'to-bill' | 'completed') => {
@@ -342,8 +376,7 @@ export default function App() {
     if (!order) return;
 
     if (status === 'completed') {
-      setBillingOrder(order);
-      setIsBillModalOpen(true);
+      openModal(setBillingOrder, order, 'billing');
       return;
     }
 
@@ -513,7 +546,7 @@ export default function App() {
         </div>
 
         <button 
-          onClick={() => setIsOrderModalOpen(true)}
+          onClick={() => openModal(setIsOrderModalOpen, true, 'order-create')}
           className="w-full bg-accent hover:bg-accent/90 text-white py-3 rounded-[20px] font-bold text-base flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-accent/20"
         >
           <Plus size={20} />
@@ -541,9 +574,9 @@ export default function App() {
                   order={order} 
                   updateStatus={updateOrderStatus} 
                   deleteOrder={deleteOrder} 
-                  setSelectedOrder={setSelectedOrder} 
+                  setSelectedOrder={(val: any) => openModal(setSelectedOrder, val, 'order-details')} 
                   bills={bills}
-                  setViewingBill={setViewingBill}
+                  setViewingBill={(val: any) => openModal(setViewingBill, val, 'bill-details')}
                   setToast={setToast}
                   onEdit={startEditingOrder}
                 />
@@ -567,9 +600,9 @@ export default function App() {
           className="px-4"
         >
           {activeTab === 'home' && renderHome()}
-          {activeTab === 'orders' && <OrdersView orders={orders} updateStatus={updateOrderStatus} deleteOrder={deleteOrder} setSelectedOrder={setSelectedOrder} openNewOrder={() => setIsOrderModalOpen(true)} bills={bills} setViewingBill={setViewingBill} setToast={setToast} onEdit={startEditingOrder} />}
-          {activeTab === 'bills' && <BillsView bills={bills} deleteBill={deleteBill} settings={settings} orders={orders} setViewingOrder={setViewingOrder} setToast={setToast} setViewingBill={setViewingBill} />}
-          {activeTab === 'menu' && <MenuView menu={menu} setMenu={setMenu} setEditingItem={setEditingItem} deleteItem={deleteMenuItem} setIsMenuModalOpen={setIsMenuModalOpen} settings={settings} saveSettings={saveSettings} sortMenu={sortMenu} />}
+          {activeTab === 'orders' && <OrdersView orders={orders} updateStatus={updateOrderStatus} deleteOrder={deleteOrder} setSelectedOrder={(val: any) => openModal(setSelectedOrder, val, 'order-details')} openNewOrder={() => openModal(setIsOrderModalOpen, true, 'order-create')} bills={bills} setViewingBill={(val: any) => openModal(setViewingBill, val, 'bill-details')} setToast={setToast} onEdit={startEditingOrder} />}
+          {activeTab === 'bills' && <BillsView bills={bills} deleteBill={deleteBill} settings={settings} orders={orders} setViewingOrder={(val: any) => openModal(setViewingOrder, val, 'order-view')} setToast={setToast} setViewingBill={(val: any) => openModal(setViewingBill, val, 'bill-details')} />}
+          {activeTab === 'menu' && <MenuView menu={menu} setMenu={setMenu} setEditingItem={(val: any) => openModal(setEditingItem, val, 'menu-edit')} deleteItem={deleteMenuItem} setIsMenuModalOpen={(val: any) => openModal(setIsMenuModalOpen, val, 'menu-manage')} settings={settings} saveSettings={saveSettings} sortMenu={sortMenu} />}
           {activeTab === 'settings' && <SettingsView settings={settings} saveSettings={saveSettings} bills={bills} setBills={setBills} menu={menu} setMenu={setMenu} orders={orders} setOrders={setOrders} />}
         </motion.div>
       </AnimatePresence>
@@ -591,7 +624,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Modals */}
-      <Modal isOpen={isOrderModalOpen} onClose={() => setIsOrderModalOpen(false)} title="New Order" fullScreen>
+      <Modal isOpen={isOrderModalOpen} onClose={handleBack} title="New Order" fullScreen>
         <OrderCreationView 
           menu={menu} 
           onPlaceOrder={handlePlaceOrder} 
@@ -605,27 +638,63 @@ export default function App() {
           setTableNo={setTableNo}
           settings={settings}
           sortMenu={sortMenu}
+          selectedItem={selectedItem}
+          setSelectedItem={(val: any) => openModal(setSelectedItem, val, 'item-select')}
+          onBack={handleBack}
         />
       </Modal>
 
-      <Modal isOpen={!!selectedOrder} onClose={() => setSelectedOrder(null)} title={`Order #${selectedOrder?.orderNo}`}>
+      <Modal isOpen={!!selectedOrder} onClose={handleBack} title={`Order #${selectedOrder?.orderNo}`}>
         {selectedOrder && <OrderDetailView order={selectedOrder} onEdit={startEditingOrder} />}
       </Modal>
 
-      <Modal isOpen={!!viewingBill} onClose={() => setViewingBill(null)} title={`Bill #${viewingBill?.orderNo}`}>
+      <Modal isOpen={!!viewingBill} onClose={handleBack} title={`Bill #${viewingBill?.orderNo}`}>
         {viewingBill && <BillDetailView bill={viewingBill} settings={settings} />}
       </Modal>
 
-      <Modal isOpen={!!viewingOrder} onClose={() => setViewingOrder(null)} title={`Order #${viewingOrder?.orderNo}`}>
+      <Modal isOpen={!!viewingOrder} onClose={handleBack} title={`Order #${viewingOrder?.orderNo}`}>
         {viewingOrder && <OrderDetailView order={viewingOrder} onEdit={startEditingOrder} />}
       </Modal>
 
-      <Modal isOpen={!!editingItem || isMenuModalOpen} onClose={() => { setEditingItem(null); setIsMenuModalOpen(false); }} title={editingItem ? "Edit Item" : "Add Item"}>
-        <MenuItemForm item={editingItem} onSave={saveMenuItem} onCancel={() => { setEditingItem(null); setIsMenuModalOpen(false); }} onDelete={deleteMenuItem} />
+      <Modal isOpen={isMenuModalOpen} onClose={handleBack} title="Manage Menu" fullScreen>
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-white/40">Menu Items ({menu.length})</h3>
+            <button 
+              onClick={() => openModal(setEditingItem, { id: crypto.randomUUID(), name: '', price: 0, prepTime: 15, category: '', extras: [], createdAt: Date.now(), customOrder: menu.length }, 'menu-edit')}
+              className="bg-accent text-white px-4 py-2 rounded-xl text-xs font-bold"
+            >
+              Add New
+            </button>
+          </div>
+          <div className="space-y-3">
+            {menu.map((item: any) => (
+              <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-white/5 overflow-hidden">
+                    {item.image ? <img src={item.image} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-white/10"><UtensilsCrossed size={20} /></div>}
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm">{item.name}</p>
+                    <p className="text-accent font-bold text-xs">{formatCurrency(item.price)}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => openModal(setEditingItem, item, 'menu-edit')} className="p-2 text-white/40 hover:text-white transition-colors"><ChevronRight size={20} /></button>
+                  <button onClick={() => deleteMenuItem(item.id)} className="p-2 text-red-500/40 hover:text-red-500 transition-colors"><Trash2 size={20} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </Modal>
 
-      <Modal isOpen={isBillModalOpen} onClose={() => setIsBillModalOpen(false)} title="Create Bill">
-        {billingOrder && <BillCreationView order={billingOrder} onSave={handleCreateBill} settings={settings} />}
+      <Modal isOpen={!!editingItem} onClose={handleBack} title={editingItem?.name ? "Edit Item" : "Add Item"}>
+        <MenuItemForm item={editingItem} onSave={(item: any) => { saveMenuItem(item); handleBack(); }} onCancel={handleBack} onDelete={(id: string) => { deleteMenuItem(id); handleBack(); }} />
+      </Modal>
+
+      <Modal isOpen={isBillModalOpen} onClose={handleBack} title="Create Bill">
+        {billingOrder && <BillCreationView order={billingOrder} onSave={(bill: any) => { handleCreateBill(bill); handleBack(); }} settings={settings} />}
       </Modal>
     </div>
   );
@@ -1016,8 +1085,7 @@ const BillDetailView = ({ bill, settings }: { bill: Bill, settings: Settings }) 
   );
 };
 
-const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructions, setOverallInstructions, customOrderTime, setCustomOrderTime, tableNo, setTableNo, settings, sortMenu }: any) => {
-  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructions, setOverallInstructions, customOrderTime, setCustomOrderTime, tableNo, setTableNo, settings, sortMenu, selectedItem, setSelectedItem, onBack }: any) => {
   const [itemInstructions, setItemInstructions] = useState('');
   const [itemExtras, setItemExtras] = useState<any[]>([]);
   const [quantity, setQuantity] = useState(1);
@@ -1043,7 +1111,7 @@ const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructi
       extras: itemExtras.filter(e => e.quantity > 0)
     };
     setCart([...cart, orderItem]);
-    setSelectedItem(null);
+    onBack(); // Close the item select modal
     setItemInstructions('');
     setItemExtras([]);
     setQuantity(1);
@@ -1171,70 +1239,62 @@ const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructi
         </div>
       )}
 
-      {/* Item Customization Modal-like overlay */}
-      <AnimatePresence>
+      {/* Item Customization Modal */}
+      <Modal isOpen={!!selectedItem} onClose={onBack} title={selectedItem?.name || "Customize Item"}>
         {selectedItem && (
-          <div className="fixed inset-0 z-[110] flex items-end justify-center">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedItem(null)} className="absolute inset-0 bg-black/80 blur-overlay" />
-            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }} className="relative w-full bg-bg-dark border-t border-white/10 rounded-t-[32px] p-8 space-y-6 max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-start">
-                <h2 className="text-2xl font-bold">{selectedItem.name}</h2>
-                <button onClick={() => setSelectedItem(null)}><X size={24} /></button>
+          <div className="space-y-6">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-4 bg-white/5 p-2 rounded-2xl">
+                <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">-</button>
+                <span className="font-bold text-xl w-8 text-center">{quantity}</span>
+                <button onClick={() => setQuantity(quantity + 1)} className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center">+</button>
               </div>
-              
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-4 bg-white/5 p-2 rounded-2xl">
-                  <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">-</button>
-                  <span className="font-bold text-xl w-8 text-center">{quantity}</span>
-                  <button onClick={() => setQuantity(quantity + 1)} className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center">+</button>
-                </div>
-                <p className="text-2xl font-bold text-accent">{formatCurrency(currentItemTotal)}</p>
-              </div>
+              <p className="text-2xl font-bold text-accent">{formatCurrency(currentItemTotal)}</p>
+            </div>
 
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold uppercase tracking-widest text-white/40">Extras</h3>
-                <div className="space-y-3">
-                  {itemExtras.map((extra, idx) => (
-                    <div key={idx} className="flex justify-between items-center bg-white/5 p-4 rounded-2xl">
-                      <div>
-                        <p className="font-bold">{extra.name}</p>
-                        <p className="text-xs text-accent">{formatCurrency(extra.price)}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <button onClick={() => {
-                          const newExtras = [...itemExtras];
-                          newExtras[idx].quantity = Math.max(0, newExtras[idx].quantity - 1);
-                          setItemExtras(newExtras);
-                        }} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">-</button>
-                        <span className="font-bold w-4 text-center">{extra.quantity}</span>
-                        <button onClick={() => {
-                          const newExtras = [...itemExtras];
-                          newExtras[idx].quantity += 1;
-                          setItemExtras(newExtras);
-                        }} className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">+</button>
-                      </div>
+            <div className="space-y-4">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-white/40">Extras</h3>
+              <div className="space-y-3">
+                {itemExtras.map((extra, idx) => (
+                  <div key={idx} className="flex justify-between items-center bg-white/5 p-4 rounded-2xl">
+                    <div>
+                      <p className="font-bold">{extra.name}</p>
+                      <p className="text-xs text-accent">{formatCurrency(extra.price)}</p>
                     </div>
-                  ))}
-                </div>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => {
+                        const newExtras = [...itemExtras];
+                        newExtras[idx].quantity = Math.max(0, newExtras[idx].quantity - 1);
+                        setItemExtras(newExtras);
+                      }} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">-</button>
+                      <span className="font-bold w-4 text-center">{extra.quantity}</span>
+                      <button onClick={() => {
+                        const newExtras = [...itemExtras];
+                        newExtras[idx].quantity += 1;
+                        setItemExtras(newExtras);
+                      }} className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">+</button>
+                    </div>
+                  </div>
+                ))}
               </div>
+            </div>
 
-              <textarea 
-                placeholder="Special Instructions for this item..."
-                value={itemInstructions}
-                onChange={(e) => setItemInstructions(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm focus:border-accent outline-none min-h-[100px]"
-              />
+            <textarea 
+              placeholder="Special Instructions for this item..."
+              value={itemInstructions}
+              onChange={(e) => setItemInstructions(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm focus:border-accent outline-none min-h-[100px]"
+            />
 
-              <button 
-                onClick={addToCart}
-                className="w-full bg-accent text-white py-5 rounded-[24px] font-bold text-lg active:scale-95 transition-all"
-              >
-                Add to Order
-              </button>
-            </motion.div>
+            <button 
+              onClick={addToCart}
+              className="w-full bg-accent text-white py-5 rounded-[24px] font-bold text-lg active:scale-95 transition-all"
+            >
+              Add to Order
+            </button>
           </div>
         )}
-      </AnimatePresence>
+      </Modal>
     </div>
   );
 };
@@ -1668,7 +1728,7 @@ const SortableMenuItem = ({ item, setEditingItem, isCustomSort }: any) => {
   );
 };
 
-const MenuView = ({ menu, setMenu, setEditingItem, deleteItem, settings, saveSettings, sortMenu }: any) => {
+const MenuView = ({ menu, setMenu, setEditingItem, deleteItem, settings, saveSettings, sortMenu, setIsMenuModalOpen }: any) => {
   const [activeCategory, setActiveCategory] = useState('All');
   const categories = ['All', ...Array.from(new Set(menu.map((item: any) => item.category).filter(Boolean)))];
   
@@ -1730,6 +1790,12 @@ const MenuView = ({ menu, setMenu, setEditingItem, deleteItem, settings, saveSet
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold tracking-tighter">Menu</h1>
         <div className="flex gap-2">
+          <button 
+            onClick={() => setIsMenuModalOpen(true)}
+            className="bg-white/5 border border-white/10 text-white px-4 py-2 rounded-xl text-xs font-bold active:scale-95 transition-all"
+          >
+            Manage
+          </button>
           <button 
             onClick={() => setEditingItem({ id: crypto.randomUUID(), name: '', price: 0, prepTime: 15, category: '', extras: [], createdAt: Date.now(), customOrder: menu.length })}
             className="bg-accent text-white p-2.5 rounded-xl shadow-lg shadow-accent/20 active:scale-95 transition-all"
