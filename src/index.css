@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Red Rose", cursive;
+  --color-accent: var(--accent-color, #ff5300);
+  --color-bg-dark: var(--bg-color, #0a0a0a);
+  --color-bg-light: var(--light-bg-color, #ffffff);
+  --radius-custom: calc(var(--border-radius, 20) * 1px);
+}
+
+@layer base {
+  body {
+    @apply bg-bg-dark text-white antialiased transition-colors duration-300;
+  }
+
+  body.light {
+    @apply bg-bg-light text-black;
+  }
+
+  body.light .blur-overlay {
+    @apply bg-bg-light/60;
+  }
+
+  body.light .bg-white\/5 {
+    @apply bg-black/5;
+  }
+
+  body.light .border-white\/10 {
+    @apply border-black/10;
+  }
+
+  body.light .text-white\/40 {
+    @apply text-black/40;
+  }
+
+  body.light .text-white\/50 {
+    @apply text-black/50;
+  }
+
+  body.light .text-white {
+    @apply text-black;
+  }
+
+  body.light .bg-bg-dark {
+    @apply bg-bg-light;
+  }
+
+  /* Apply custom radius to common elements */
+  .rounded-\[20px\], .rounded-\[24px\], .rounded-\[32px\], .rounded-2xl, .rounded-3xl {
+    border-radius: var(--radius-custom);
+  }
+}
+
+@keyframes smooth-flicker {
+  0%, 100% { 
+    border-color: var(--accent-color, #ff5300); 
+    box-shadow: 0 0 0px var(--accent-color, #ff5300); 
+  }
+  50% { 
+    border-color: rgba(255, 255, 255, 0.1); 
+    box-shadow: 0 0 15px var(--accent-color, #ff5300); 
+  }
+}
+
+.animate-smooth-flicker {
+  animation: smooth-flicker 1s ease-in-out infinite;
+}
+
+.blur-overlay {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
