@@ -17,16 +17,58 @@
     @apply bg-bg-light text-black;
   }
 
-  body.light .blur-overlay {
-    @apply bg-bg-light/60;
+  /* Backgrounds */
+  body.light .bg-bg-dark {
+    @apply bg-bg-light;
   }
 
   body.light .bg-white\/5 {
     @apply bg-black/5;
   }
 
+  body.light .bg-white\/10 {
+    @apply bg-black/10;
+  }
+
+  body.light .bg-white\/80 {
+    @apply bg-black/10;
+  }
+
+  /* bg-black overlays: soften heavy darks, keep modal scrim readable */
+  body.light .bg-black\/40 {
+    background-color: rgba(0, 0, 0, 0.08);
+  }
+
+  body.light .bg-black\/60 {
+    background-color: rgba(200, 200, 200, 0.7);
+  }
+
+  /* bg-black/80 modal scrim — keep it dark so content is readable */
+
+  /* Borders */
+  body.light .border-white\/5 {
+    @apply border-black/5;
+  }
+
   body.light .border-white\/10 {
     @apply border-black/10;
+  }
+
+  /* Text */
+  body.light .text-white {
+    @apply text-black;
+  }
+
+  body.light .text-white\/10 {
+    @apply text-black/10;
+  }
+
+  body.light .text-white\/20 {
+    @apply text-black/20;
+  }
+
+  body.light .text-white\/30 {
+    @apply text-black/30;
   }
 
   body.light .text-white\/40 {
@@ -37,12 +79,33 @@
     @apply text-black/50;
   }
 
-  body.light .text-white {
-    @apply text-black;
+  body.light .text-white\/60 {
+    @apply text-black/60;
   }
 
-  body.light .bg-bg-dark {
-    @apply bg-bg-light;
+  /* Hover states */
+  body.light .hover\:text-white\/60:hover {
+    @apply text-black/60;
+  }
+
+  body.light .hover\:bg-white\/5:hover {
+    @apply bg-black/5;
+  }
+
+  body.light .hover\:bg-white\/20:hover {
+    @apply bg-black/20;
+  }
+
+  /* Blur overlay backdrop */
+  body.light .blur-overlay {
+    @apply bg-bg-light/70;
+  }
+
+  /* Input fields — ensure legible text on light bg */
+  body.light input,
+  body.light textarea,
+  body.light select {
+    @apply text-black placeholder:text-black/30;
   }
 
   /* Apply custom radius to common elements */
@@ -54,34 +117,21 @@
 @keyframes smooth-flicker {
   0%, 100% { 
     border-color: var(--accent-color, #ff5300); 
-    box-shadow: 0 0 0px var(--accent-color, #ff5300); 
+    opacity: 1;
   }
   50% { 
-    border-color: rgba(255, 255, 255, 0.1); 
-    box-shadow: 0 0 15px var(--accent-color, #ff5300); 
+    border-color: rgba(255, 255, 255, 0.2); 
+    opacity: 0.8;
   }
 }
 
 .animate-smooth-flicker {
-  animation: smooth-flicker 1s ease-in-out infinite;
-}
-
-@keyframes glow-flicker {
-  0%, 100% { 
-    text-shadow: 0 0 10px var(--accent-color, #ff5300), 0 0 20px var(--accent-color, #ff5300);
-    opacity: 1;
-  }
-  50% { 
-    text-shadow: 0 0 2px var(--accent-color, #ff5300);
-    opacity: 0.7;
-  }
-}
-
-.animate-glow-flicker {
-  animation: glow-flicker 0.3s ease-in-out infinite;
+  animation: smooth-flicker 2s ease-in-out infinite;
+  will-change: border-color, opacity;
 }
 
 .blur-overlay {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  will-change: backdrop-filter;
 }
