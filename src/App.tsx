@@ -142,7 +142,6 @@ export default function App() {
   // Modals
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isMenuModalOpen, setIsMenuModalOpen] = useState(false);
-  const [isBillModalOpen, setIsBillModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [billingOrder, setBillingOrder] = useState<Order | null>(null);
@@ -162,7 +161,6 @@ export default function App() {
   const closeModalByName = (name: string) => {
     if (name === 'order-create') setIsOrderModalOpen(false);
     else if (name === 'menu-manage') setIsMenuModalOpen(false);
-    else if (name === 'bill-create') setIsBillModalOpen(false);
     else if (name === 'order-details') setSelectedOrder(null);
     else if (name === 'menu-edit') setEditingItem(null);
     else if (name === 'billing') setBillingOrder(null);
@@ -172,11 +170,19 @@ export default function App() {
     else if (name === 'item-select') setSelectedItem(null);
   };
 
-  const navigateTo = (tab: string) => {
-    if (tab !== activeTab) {
-      setHistory(prev => [...prev, tab]);
+  const navigateTo = (tab: string, replace = false) => {
+    if (tab !== activeTab || replace) {
+      setHistory(prev => {
+        const newHist = [...prev];
+        if (replace && newHist.length > 0) newHist.pop();
+        if (newHist[newHist.length - 1] !== tab) {
+          newHist.push(tab);
+        }
+        return newHist;
+      });
       setActiveTab(tab);
-      window.history.pushState(null, '');
+      if (replace) window.history.replaceState(null, '');
+      else window.history.pushState(null, '');
     }
   };
 
@@ -205,8 +211,9 @@ export default function App() {
         if (lastState && typeof lastState === 'string' && lastState.startsWith('modal:')) {
           closeModalByName(lastState.split(':')[1]);
         } else if (lastState) {
-          const prevTab = newHistory[newHistory.length - 1];
-          setActiveTab(prevTab);
+          // Find the last actual tab in history to avoid setting activeTab to a modal name
+          const lastTab = [...newHistory].reverse().find(s => typeof s === 'string' && !s.startsWith('modal:'));
+          if (lastTab) setActiveTab(lastTab);
         }
         setHistory(newHistory);
         backPressCount.current = 0;
@@ -359,9 +366,8 @@ export default function App() {
     // Explicitly close modal
     setIsOrderModalOpen(false);
     setEditingOrder(null);
-    handleBack();
     
-    if (activeTab !== 'orders') navigateTo('orders');
+    navigateTo('orders', true);
     setToast(editingOrder ? "Order Updated!" : "Order Placed!");
   };
 
@@ -429,10 +435,9 @@ export default function App() {
     
     // Explicitly close modal first to prevent double clicks
     setBillingOrder(null);
-    handleBack();
     
     setToast("Bill Saved Successfully!");
-    if (activeTab !== 'bills') navigateTo('bills');
+    navigateTo('bills', true);
   };
 
   const deleteBill = async (id: string) => {
