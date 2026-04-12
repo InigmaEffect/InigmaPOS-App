@@ -196,7 +196,7 @@ export default function App() {
               } else {
                 new Notification("Order Alert", {
                   body: `Order #${order.orderNo} has ${Math.round(totalTime - elapsed)} mins left!`,
-                  icon: settings.companyLogo || "https://picsum.photos/seed/pos/192/192"
+                  icon: settings.companyLogo || "/icons/icon-192.png"
                 });
               }
               localStorage.setItem(notifiedKey, 'true');
