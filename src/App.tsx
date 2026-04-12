@@ -18,8 +18,32 @@ import {
   Download,
   Filter,
   ArrowLeft,
-  Bell
+  Bell,
+  ArrowUpAZ,
+  ArrowDownAZ,
+  ArrowUpZA,
+  ArrowDownZA,
+  GripVertical,
+  ArrowUpDown
 } from 'lucide-react';
+import { 
+  DndContext, 
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  rectSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { getDB, defaultSettings, MenuItem, Order, Bill, Settings, OrderItem } from './lib/db';
 import { cn, formatCurrency, calculateOrderTime, generateOrderNo, formatTimeLeft, calculateOrderTotal } from './lib/utils';
 import { format } from 'date-fns';
@@ -368,11 +392,17 @@ export default function App() {
 
   const saveMenuItem = async (item: MenuItem) => {
     const db = await getDB();
-    await db.put('menu', item);
+    const isNew = !menu.find(i => i.id === item.id);
+    const newItem = {
+      ...item,
+      createdAt: item.createdAt || Date.now(),
+      customOrder: item.customOrder ?? (isNew ? menu.length : item.customOrder)
+    };
+    await db.put('menu', newItem);
     setMenu(prev => {
-      const exists = prev.find(i => i.id === item.id);
-      if (exists) return prev.map(i => i.id === item.id ? item : i);
-      return [...prev, item];
+      const exists = prev.find(i => i.id === newItem.id);
+      if (exists) return prev.map(i => i.id === newItem.id ? newItem : i);
+      return [...prev, newItem];
     });
     setEditingItem(null);
   };
@@ -381,6 +411,27 @@ export default function App() {
     const db = await getDB();
     await db.delete('menu', id);
     setMenu(prev => prev.filter(i => i.id !== id));
+  };
+
+  const sortMenu = (items: MenuItem[], method: Settings['menuSortMethod'], direction: Settings['menuSortDirection']) => {
+    const sorted = [...items];
+    if (method === 'custom') {
+      return sorted.sort((a, b) => (a.customOrder || 0) - (b.customOrder || 0));
+    }
+    
+    sorted.sort((a, b) => {
+      let comparison = 0;
+      if (method === 'alphabetical') {
+        comparison = a.name.localeCompare(b.name);
+      } else if (method === 'category') {
+        comparison = a.category.localeCompare(b.category);
+        if (comparison === 0) comparison = a.name.localeCompare(b.name);
+      } else if (method === 'recent') {
+        comparison = (a.createdAt || 0) - (b.createdAt || 0);
+      }
+      return direction === 'asc' ? comparison : -comparison;
+    });
+    return sorted;
   };
 
   // --- Tab Counts ---
@@ -506,7 +557,7 @@ export default function App() {
           {activeTab === 'home' && renderHome()}
           {activeTab === 'orders' && <OrdersView orders={orders} updateStatus={updateOrderStatus} deleteOrder={deleteOrder} setSelectedOrder={setSelectedOrder} openNewOrder={() => setIsOrderModalOpen(true)} bills={bills} setViewingBill={setViewingBill} setToast={setToast} onEdit={startEditingOrder} />}
           {activeTab === 'bills' && <BillsView bills={bills} deleteBill={deleteBill} settings={settings} orders={orders} setViewingOrder={setViewingOrder} setToast={setToast} setViewingBill={setViewingBill} />}
-          {activeTab === 'menu' && <MenuView menu={menu} setEditingItem={setEditingItem} deleteItem={deleteMenuItem} setIsMenuModalOpen={setIsMenuModalOpen} />}
+          {activeTab === 'menu' && <MenuView menu={menu} setMenu={setMenu} setEditingItem={setEditingItem} deleteItem={deleteMenuItem} setIsMenuModalOpen={setIsMenuModalOpen} settings={settings} saveSettings={saveSettings} sortMenu={sortMenu} />}
           {activeTab === 'settings' && <SettingsView settings={settings} saveSettings={saveSettings} bills={bills} setBills={setBills} />}
         </motion.div>
       </AnimatePresence>
@@ -540,6 +591,8 @@ export default function App() {
           setCustomOrderTime={setCustomOrderTime}
           tableNo={tableNo}
           setTableNo={setTableNo}
+          settings={settings}
+          sortMenu={sortMenu}
         />
       </Modal>
 
@@ -951,7 +1004,7 @@ const BillDetailView = ({ bill, settings }: { bill: Bill, settings: Settings }) 
   );
 };
 
-const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructions, setOverallInstructions, customOrderTime, setCustomOrderTime, tableNo, setTableNo }: any) => {
+const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructions, setOverallInstructions, customOrderTime, setCustomOrderTime, tableNo, setTableNo, settings, sortMenu }: any) => {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [itemInstructions, setItemInstructions] = useState('');
   const [itemExtras, setItemExtras] = useState<any[]>([]);
@@ -960,9 +1013,10 @@ const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructi
 
   const categories = ['All', ...Array.from(new Set(menu.map((item: any) => item.category).filter(Boolean)))];
   
+  const sortedMenu = sortMenu(menu, settings.menuSortMethod, settings.menuSortDirection);
   const filteredMenu = activeCategory === 'All' 
-    ? menu 
-    : menu.filter((item: any) => item.category === activeCategory);
+    ? sortedMenu 
+    : sortedMenu.filter((item: any) => item.category === activeCategory);
 
   const addToCart = () => {
     if (!selectedItem) return;
@@ -1509,93 +1563,219 @@ const BillsView = ({ bills, deleteBill, settings, orders, setViewingOrder, setTo
   );
 };
 
-const MenuView = ({ menu, setEditingItem, deleteItem }: any) => {
+const SortableMenuItem = ({ item, setEditingItem, isCustomSort }: any) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: item.id, disabled: !isCustomSort });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 100 : 1,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <motion.div 
+      ref={setNodeRef}
+      style={style}
+      variants={{
+        hidden: { opacity: 0, y: 10 },
+        visible: { opacity: 1, y: 0 }
+      }}
+      className="bg-white/5 border border-white/10 rounded-[20px] overflow-hidden group relative"
+    >
+      {isCustomSort && (
+        <div 
+          {...attributes} 
+          {...listeners}
+          className="absolute top-2 left-2 z-10 p-1.5 bg-black/40 blur-overlay rounded-lg text-white/40 hover:text-white cursor-grab active:cursor-grabbing"
+        >
+          <GripVertical size={14} />
+        </div>
+      )}
+      <div className="aspect-square bg-white/5 relative">
+        {item.image ? (
+          <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-white/10">
+            <UtensilsCrossed size={32} />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+          <button onClick={() => setEditingItem(item)} className="p-2.5 bg-white/10 rounded-full hover:bg-accent transition-colors"><SettingsIcon size={18} /></button>
+        </div>
+        <button 
+          onClick={(e) => { e.stopPropagation(); setEditingItem(item); }}
+          className="absolute top-2 right-2 p-2 bg-black/40 blur-overlay rounded-full text-white md:hidden"
+        >
+          <SettingsIcon size={14} />
+        </button>
+      </div>
+      <div className="p-3">
+        <p className="font-bold text-sm truncate">{item.name}</p>
+        <p className="text-accent font-bold text-xs">{formatCurrency(item.price)}</p>
+      </div>
+    </motion.div>
+  );
+};
+
+const MenuView = ({ menu, setMenu, setEditingItem, deleteItem, settings, saveSettings, sortMenu }: any) => {
   const [activeCategory, setActiveCategory] = useState('All');
   const categories = ['All', ...Array.from(new Set(menu.map((item: any) => item.category).filter(Boolean)))];
   
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = menu.findIndex((i: any) => i.id === active.id);
+      const newIndex = menu.findIndex((i: any) => i.id === over.id);
+      const newMenu = arrayMove(menu, oldIndex, newIndex);
+      
+      // Update customOrder for all items
+      const db = await getDB();
+      const updatedMenu = newMenu.map((item: any, idx: number) => ({
+        ...item,
+        customOrder: idx
+      }));
+      
+      // Batch update in DB
+      const tx = db.transaction('menu', 'readwrite');
+      await Promise.all(updatedMenu.map(item => tx.store.put(item)));
+      await tx.done;
+      
+      setMenu(updatedMenu);
+    }
+  };
+
+  const sortedMenu = sortMenu(menu, settings.menuSortMethod, settings.menuSortDirection);
   const filteredMenu = activeCategory === 'All' 
-    ? menu 
-    : menu.filter((item: any) => item.category === activeCategory);
+    ? sortedMenu 
+    : sortedMenu.filter((item: any) => item.category === activeCategory);
+
+  const toggleSortDirection = () => {
+    saveSettings({
+      ...settings,
+      menuSortDirection: settings.menuSortDirection === 'asc' ? 'desc' : 'asc'
+    });
+  };
+
+  const setSortMethod = (method: Settings['menuSortMethod']) => {
+    saveSettings({
+      ...settings,
+      menuSortMethod: method
+    });
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold tracking-tighter">Menu</h1>
-        <button 
-          onClick={() => setEditingItem({ id: crypto.randomUUID(), name: '', price: 0, prepTime: 15, category: '', extras: [] })}
-          className="bg-accent text-white p-2.5 rounded-xl shadow-lg shadow-accent/20 active:scale-95 transition-all"
-        >
-          <Plus size={20} />
-        </button>
-      </div>
-
-      <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-        {categories.map(cat => (
-          <button
-            key={cat as string}
-            onClick={() => setActiveCategory(cat as string)}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border transition-all whitespace-nowrap",
-              activeCategory === cat ? "bg-accent border-accent text-white" : "bg-white/5 border-white/10 text-white/50"
-            )}
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setEditingItem({ id: crypto.randomUUID(), name: '', price: 0, prepTime: 15, category: '', extras: [], createdAt: Date.now(), customOrder: menu.length })}
+            className="bg-accent text-white p-2.5 rounded-xl shadow-lg shadow-accent/20 active:scale-95 transition-all"
           >
-            {cat as string}
+            <Plus size={20} />
           </button>
-        ))}
+        </div>
       </div>
 
-      <motion.div 
-        initial="hidden"
-        animate="visible"
-        variants={{
-          visible: {
-            transition: {
-              staggerChildren: 0.05
-            }
-          }
-        }}
-        className="grid grid-cols-2 gap-3"
-      >
-        {filteredMenu.map((item: any) => (
-          <motion.div 
-            key={item.id} 
-            variants={{
-              hidden: { opacity: 0, y: 10 },
-              visible: { opacity: 1, y: 0 }
-            }}
-            className="bg-white/5 border border-white/10 rounded-[20px] overflow-hidden group"
-          >
-            <div className="aspect-square bg-white/5 relative">
-              {item.image ? (
-                <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-white/10">
-                  <UtensilsCrossed size={32} />
-                </div>
+      <div className="flex flex-col gap-3">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          {categories.map(cat => (
+            <button
+              key={cat as string}
+              onClick={() => setActiveCategory(cat as string)}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border transition-all whitespace-nowrap",
+                activeCategory === cat ? "bg-accent border-accent text-white" : "bg-white/5 border-white/10 text-white/50"
               )}
-              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                <button onClick={() => setEditingItem(item)} className="p-2.5 bg-white/10 rounded-full hover:bg-accent transition-colors"><SettingsIcon size={18} /></button>
-              </div>
-              <button 
-                onClick={(e) => { e.stopPropagation(); setEditingItem(item); }}
-                className="absolute top-2 right-2 p-2 bg-black/40 blur-overlay rounded-full text-white md:hidden"
+            >
+              {cat as string}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between bg-white/5 p-2 rounded-2xl border border-white/5">
+          <div className="flex gap-1 overflow-x-auto no-scrollbar">
+            {(['custom', 'alphabetical', 'category', 'recent'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setSortMethod(m)}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all whitespace-nowrap",
+                  settings.menuSortMethod === m ? "bg-accent text-white" : "text-white/40 hover:text-white/60"
+                )}
               >
-                <SettingsIcon size={14} />
+                {m}
               </button>
-            </div>
-            <div className="p-3">
-              <p className="font-bold text-sm truncate">{item.name}</p>
-              <p className="text-accent font-bold text-xs">{formatCurrency(item.price)}</p>
-            </div>
+            ))}
+          </div>
+          {settings.menuSortMethod !== 'custom' && (
+            <button 
+              onClick={toggleSortDirection}
+              className="p-2 bg-white/5 rounded-xl text-accent hover:bg-white/10 transition-colors"
+            >
+              {settings.menuSortDirection === 'asc' ? <ArrowUpAZ size={16} /> : <ArrowDownZA size={16} />}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <DndContext 
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext 
+          items={filteredMenu.map((i: any) => i.id)}
+          strategy={rectSortingStrategy}
+        >
+          <motion.div 
+            initial="hidden"
+            animate="visible"
+            variants={{
+              visible: {
+                transition: {
+                  staggerChildren: 0.05
+                }
+              }
+            }}
+            className="grid grid-cols-2 gap-3"
+          >
+            {filteredMenu.map((item: any) => (
+              <SortableMenuItem 
+                key={item.id} 
+                item={item} 
+                setEditingItem={setEditingItem} 
+                isCustomSort={settings.menuSortMethod === 'custom' && activeCategory === 'All'}
+              />
+            ))}
           </motion.div>
-        ))}
-      </motion.div>
+        </SortableContext>
+      </DndContext>
     </div>
   );
 };
 
 const MenuItemForm = ({ item, onSave, onCancel, onDelete }: any) => {
-  const [formData, setFormData] = useState<MenuItem>(item || { id: crypto.randomUUID(), name: '', price: 0, prepTime: 15, category: '', extras: [] });
+  const [formData, setFormData] = useState<MenuItem>(item || { id: crypto.randomUUID(), name: '', price: 0, prepTime: 15, category: '', extras: [], createdAt: Date.now(), customOrder: 0 });
   const [newExtra, setNewExtra] = useState({ name: '', price: 0 });
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {

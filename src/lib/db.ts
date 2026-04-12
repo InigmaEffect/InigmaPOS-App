@@ -8,6 +8,8 @@ export interface MenuItem {
   prepTime: number;
   category: string;
   extras: { name: string; price: number }[];
+  createdAt: number;
+  customOrder: number;
 }
 
 export interface OrderItem {
@@ -61,6 +63,8 @@ export interface Settings {
   defaultTax: number;
   notificationThreshold: number;
   customBillFields: string[];
+  menuSortMethod: 'alphabetical' | 'category' | 'recent' | 'custom';
+  menuSortDirection: 'asc' | 'desc';
 }
 
 interface InigmaDB extends DBSchema {
@@ -100,4 +104,6 @@ export const defaultSettings: Settings = {
   defaultTax: 0,
   notificationThreshold: 20,
   customBillFields: [],
+  menuSortMethod: 'custom',
+  menuSortDirection: 'asc',
 };
