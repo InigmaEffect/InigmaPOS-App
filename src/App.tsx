@@ -52,7 +52,7 @@ import html2canvas from 'html2canvas';
 
 // --- Components ---
 
-const BottomNav = ({ activeTab, setActiveTab, counts }: { activeTab: string, setActiveTab: (t: string) => void, counts: any }) => {
+const BottomNav = ({ activeTab, navigateTo, counts }: { activeTab: string, navigateTo: (t: string) => void, counts: any }) => {
   const tabs = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'orders', label: 'Orders', icon: ClipboardList, badge: counts.orders },
@@ -70,7 +70,7 @@ const BottomNav = ({ activeTab, setActiveTab, counts }: { activeTab: string, set
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => navigateTo(tab.id)}
               className={cn(
                 "relative flex-1 flex flex-col items-center py-2 rounded-2xl transition-all duration-300",
                 isActive ? "text-accent bg-accent/10" : "text-white/40 hover:text-white/60"
@@ -157,6 +157,13 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const backPressCount = useRef(0);
 
+  const navigateTo = (tab: string) => {
+    if (tab !== activeTab) {
+      setHistory(prev => [...prev, tab]);
+      setActiveTab(tab);
+    }
+  };
+
   useEffect(() => {
     loadData();
     // Back button handling
@@ -169,21 +176,26 @@ export default function App() {
         setActiveTab(prevTab);
         backPressCount.current = 0;
       } else {
-        if (backPressCount.current === 0) {
-          setToast("Press back again to exit");
-          backPressCount.current++;
-          setTimeout(() => { backPressCount.current = 0; }, 2000);
-          window.history.pushState(null, ''); // Keep user on page
+        if (activeTab !== 'home') {
+          navigateTo('home');
+          backPressCount.current = 0;
+          window.history.pushState(null, '');
         } else {
-          // In a real PWA on Android, this would exit. 
-          // In browser, we can't easily "exit" but we've handled the UI logic.
+          if (backPressCount.current === 0) {
+            setToast("Press back again to exit");
+            backPressCount.current++;
+            setTimeout(() => { backPressCount.current = 0; }, 2000);
+            window.history.pushState(null, ''); // Keep user on page
+          } else {
+            // In a real PWA on Android, this would exit. 
+          }
         }
       }
     };
     window.history.pushState(null, '');
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [history]);
+  }, [history, activeTab]);
 
   // Notification Logic
   useEffect(() => {
@@ -310,7 +322,7 @@ export default function App() {
     setCustomOrderTime('');
     setTableNo('');
     setIsOrderModalOpen(false);
-    setActiveTab('orders');
+    navigateTo('orders');
   };
 
   const startEditingOrder = (order: Order) => {
@@ -379,7 +391,7 @@ export default function App() {
     setIsBillModalOpen(false);
     setBillingOrder(null);
     setToast("Bill Saved Successfully!");
-    setActiveTab('bills');
+    navigateTo('bills');
   };
 
   const deleteBill = async (id: string) => {
@@ -558,11 +570,11 @@ export default function App() {
           {activeTab === 'orders' && <OrdersView orders={orders} updateStatus={updateOrderStatus} deleteOrder={deleteOrder} setSelectedOrder={setSelectedOrder} openNewOrder={() => setIsOrderModalOpen(true)} bills={bills} setViewingBill={setViewingBill} setToast={setToast} onEdit={startEditingOrder} />}
           {activeTab === 'bills' && <BillsView bills={bills} deleteBill={deleteBill} settings={settings} orders={orders} setViewingOrder={setViewingOrder} setToast={setToast} setViewingBill={setViewingBill} />}
           {activeTab === 'menu' && <MenuView menu={menu} setMenu={setMenu} setEditingItem={setEditingItem} deleteItem={deleteMenuItem} setIsMenuModalOpen={setIsMenuModalOpen} settings={settings} saveSettings={saveSettings} sortMenu={sortMenu} />}
-          {activeTab === 'settings' && <SettingsView settings={settings} saveSettings={saveSettings} bills={bills} setBills={setBills} />}
+          {activeTab === 'settings' && <SettingsView settings={settings} saveSettings={saveSettings} bills={bills} setBills={setBills} menu={menu} setMenu={setMenu} orders={orders} setOrders={setOrders} />}
         </motion.div>
       </AnimatePresence>
 
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} counts={counts} />
+      <BottomNav activeTab={activeTab} navigateTo={navigateTo} counts={counts} />
 
       {/* Toast */}
       <AnimatePresence>
@@ -1415,60 +1427,91 @@ const BillsView = ({ bills, deleteBill, settings, orders, setViewingOrder, setTo
       
       for (let j = 0; j < pageBills.length; j++) {
         const bill = pageBills[j];
-        const yOffset = j * 70 + 10;
+        const col = j % 2;
+        const row = Math.floor(j / 2);
+        const xOffset = col * 105;
+        const yOffset = row * 148.5;
         
         // Brand Background
         if (settings.companyLogo) {
-          doc.setGState(new (doc as any).GState({ opacity: 0.05 }));
-          doc.addImage(settings.companyLogo, 'PNG', 70, yOffset + 10, 50, 50);
+          doc.setGState(new (doc as any).GState({ opacity: 0.13 }));
+          doc.addImage(settings.companyLogo, 'PNG', xOffset + 27.5, yOffset + 40, 50, 50);
           doc.setGState(new (doc as any).GState({ opacity: 1 }));
         }
 
-        doc.setDrawColor(200);
-        doc.rect(10, yOffset, 190, 65);
+        doc.setDrawColor(220);
+        doc.setLineWidth(0.1);
+        doc.rect(xOffset + 5, yOffset + 5, 95, 138.5);
         
         doc.setFontSize(12);
-        doc.text(`${settings.billHeader} - Order #${bill.orderNo}`, 15, yOffset + 10);
-        doc.setFontSize(8);
-        doc.text(format(bill.timestamp, 'yyyy-MM-dd HH:mm'), 15, yOffset + 15);
+        doc.setFont('helvetica', 'bold');
+        doc.text(settings.billHeader, xOffset + 10, yOffset + 15);
+        doc.setFontSize(10);
+        doc.text(`Order #${bill.orderNo}`, xOffset + 10, yOffset + 22);
         
-        let itemY = yOffset + 25;
-        bill.items.slice(0, 3).forEach((item: any) => {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100);
+        doc.text(format(bill.timestamp, 'yyyy-MM-dd HH:mm'), xOffset + 10, yOffset + 28);
+        doc.setTextColor(0);
+        
+        doc.setDrawColor(240);
+        doc.line(xOffset + 10, yOffset + 32, xOffset + 95, yOffset + 32);
+
+        let itemY = yOffset + 38;
+        bill.items.slice(0, 8).forEach((item: any) => {
           const itemSubtotal = (item.price * item.quantity) + item.extras.reduce((s:any,e:any)=>s+(e.price*e.quantity),0);
-          const discAmt = item.discount ? (item.discount.type === 'percent' ? (itemSubtotal * (item.discount.value / 100)) : item.discount.value) : 0;
           
           doc.setFontSize(8);
-          doc.text(`${item.quantity}x ${item.name}`, 15, itemY);
-          doc.text(formatCurrency(itemSubtotal), 170, itemY);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`${item.quantity}x ${item.name}`, xOffset + 10, itemY);
+          doc.setFont('helvetica', 'normal');
+          doc.text(formatCurrency(itemSubtotal), xOffset + 95, itemY, { align: 'right' });
           
-          doc.setFontSize(6);
-          doc.setTextColor(100);
-          let details = `Unit: ${formatCurrency(item.price)}`;
-          if (discAmt > 0) details += ` | Final: ${formatCurrency(itemSubtotal - discAmt)}`;
-          doc.text(details, 15, itemY + 3);
-          doc.setTextColor(0);
-          
-          itemY += 8;
+          itemY += 6;
         });
         
-        if (bill.items.length > 3) doc.text(`...and ${bill.items.length - 3} more`, 15, itemY);
+        if (bill.items.length > 8) {
+          doc.setFontSize(7);
+          doc.setTextColor(150);
+          doc.text(`...and ${bill.items.length - 8} more items`, xOffset + 10, itemY);
+          doc.setTextColor(0);
+        }
         
-        const summaryY = yOffset + 50;
-        doc.text(`Subtotal: ${formatCurrency(bill.subtotal)}`, 140, summaryY);
+        const summaryY = yOffset + 105;
+        doc.setDrawColor(240);
+        doc.line(xOffset + 10, summaryY - 5, xOffset + 95, summaryY - 5);
+
+        doc.setFontSize(8);
+        doc.text(`Subtotal:`, xOffset + 10, summaryY);
+        doc.text(formatCurrency(bill.subtotal), xOffset + 95, summaryY, { align: 'right' });
+        
         const discAmt = bill.discount.type === 'percent' ? (bill.subtotal * (bill.discount.value / 100)) : bill.discount.value;
-        doc.text(`Discount (${bill.discount.value}${bill.discount.type === 'percent' ? '%' : ' PKR'}): -${formatCurrency(discAmt)}`, 140, summaryY + 5);
-        doc.text(`Tax (${bill.taxPercent}%): +${formatCurrency((bill.subtotal - discAmt) * (bill.taxPercent / 100))}`, 140, summaryY + 10);
-        doc.setFontSize(10);
-        doc.text(`TOTAL: ${formatCurrency(bill.total)}`, 140, summaryY + 15);
+        doc.text(`Discount:`, xOffset + 10, summaryY + 5);
+        doc.text(`-${formatCurrency(discAmt)}`, xOffset + 95, summaryY + 5, { align: 'right' });
+        
+        doc.text(`Tax (${bill.taxPercent}%):`, xOffset + 10, summaryY + 10);
+        doc.text(`+${formatCurrency((bill.subtotal - discAmt) * (bill.taxPercent / 100))}`, xOffset + 95, summaryY + 10, { align: 'right' });
+        
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(settings.accentColor);
+        doc.text(`TOTAL:`, xOffset + 10, summaryY + 18);
+        doc.text(formatCurrency(bill.total), xOffset + 95, summaryY + 18, { align: 'right' });
+        doc.setTextColor(0);
         
         doc.setFontSize(7);
+        doc.setFont('helvetica', 'italic');
         doc.setTextColor(150);
-        doc.text(settings.billFooter, 15, yOffset + 62);
+        const splitFooter = doc.splitTextToSize(settings.billFooter, 85);
+        doc.text(splitFooter, xOffset + 10, yOffset + 130);
         doc.setTextColor(0);
 
         if (!bill.isSold) {
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'bold');
           doc.setTextColor(255, 0, 0);
-          doc.text("NOT SOLD", 15, yOffset + 58);
+          doc.text("NOT SOLD", xOffset + 10, summaryY + 25);
           doc.setTextColor(0, 0, 0);
         }
       }
@@ -1867,7 +1910,7 @@ const MenuItemForm = ({ item, onSave, onCancel, onDelete }: any) => {
   );
 };
 
-const SettingsView = ({ settings, saveSettings, bills, setBills }: any) => {
+const SettingsView = ({ settings, saveSettings, bills, setBills, menu, setMenu, orders, setOrders }: any) => {
   const [formData, setFormData] = useState<Settings>(settings);
   const [newField, setNewField] = useState('');
 
@@ -1883,12 +1926,12 @@ const SettingsView = ({ settings, saveSettings, bills, setBills }: any) => {
   };
 
   const exportData = () => {
-    const data = JSON.stringify({ bills, settings });
+    const data = JSON.stringify({ bills, settings, menu, orders });
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `inigma_backup_${format(new Date(), 'yyyyMMdd')}.json`;
+    a.download = `inigma_full_backup_${format(new Date(), 'yyyyMMdd')}.json`;
     a.click();
   };
 
@@ -1899,8 +1942,21 @@ const SettingsView = ({ settings, saveSettings, bills, setBills }: any) => {
       reader.onloadend = async () => {
         try {
           const data = JSON.parse(reader.result as string);
+          const db = await getDB();
+
+          if (data.menu) {
+            const tx = db.transaction('menu', 'readwrite');
+            await Promise.all(data.menu.map((m: any) => tx.store.put(m)));
+            await tx.done;
+            setMenu(data.menu);
+          }
+          if (data.orders) {
+            const tx = db.transaction('orders', 'readwrite');
+            await Promise.all(data.orders.map((o: any) => tx.store.put(o)));
+            await tx.done;
+            setOrders(data.orders);
+          }
           if (data.bills) {
-            const db = await getDB();
             const tx = db.transaction('bills', 'readwrite');
             await Promise.all(data.bills.map((b: any) => tx.store.put(b)));
             await tx.done;
