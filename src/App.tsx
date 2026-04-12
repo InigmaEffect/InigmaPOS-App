@@ -355,7 +355,12 @@ export default function App() {
     setOverallInstructions('');
     setCustomOrderTime('');
     setTableNo('');
+    
+    // Explicitly close modal
+    setIsOrderModalOpen(false);
+    setEditingOrder(null);
     handleBack();
+    
     if (activeTab !== 'orders') navigateTo('orders');
     setToast(editingOrder ? "Order Updated!" : "Order Placed!");
   };
@@ -398,6 +403,7 @@ export default function App() {
   const handleCreateBill = async (billData: Partial<Bill>) => {
     if (!billingOrder) return;
 
+    const db = await getDB();
     const newBill: Bill = {
       id: crypto.randomUUID(),
       orderId: billingOrder.id,
@@ -412,7 +418,6 @@ export default function App() {
       customFields: billData.customFields || {}
     };
 
-    const db = await getDB();
     await db.add('bills', newBill);
     
     // Mark order as completed
@@ -421,7 +426,11 @@ export default function App() {
     
     setBills(prev => [...prev, newBill]);
     setOrders(prev => prev.map(o => o.id === billingOrder.id ? updatedOrder : o));
+    
+    // Explicitly close modal first to prevent double clicks
+    setBillingOrder(null);
     handleBack();
+    
     setToast("Bill Saved Successfully!");
     if (activeTab !== 'bills') navigateTo('bills');
   };
@@ -1109,6 +1118,7 @@ const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructi
   const [itemExtras, setItemExtras] = useState<any[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [activeCategory, setActiveCategory] = useState('All');
+  const [isSaving, setIsSaving] = useState(false);
 
   const categories = ['All', ...Array.from(new Set(menu.map((item: any) => item.category).filter(Boolean)))];
   
@@ -1249,10 +1259,18 @@ const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructi
               className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-xs focus:border-accent outline-none min-h-[60px]"
             />
             <button 
-              onClick={onPlaceOrder}
-              className="w-full bg-accent text-white py-3.5 rounded-xl font-bold text-base shadow-lg shadow-accent/20 active:scale-95 transition-all"
+              onClick={() => {
+                if (isSaving) return;
+                setIsSaving(true);
+                onPlaceOrder();
+              }}
+              disabled={isSaving}
+              className={cn(
+                "w-full py-3.5 rounded-xl font-bold text-base shadow-lg shadow-accent/20 active:scale-95 transition-all",
+                isSaving ? "bg-accent/50 text-white/50 cursor-not-allowed" : "bg-accent text-white"
+              )}
             >
-              Place Order
+              {isSaving ? "Placing Order..." : "Place Order"}
             </button>
           </div>
         </div>
@@ -1326,6 +1344,8 @@ const BillCreationView = ({ order, onSave, settings }: any) => {
   const [customFields, setCustomFields] = useState<Record<string, string>>({});
   const [itemDiscounts, setItemDiscounts] = useState<Record<string, { type: 'flat' | 'percent', value: number }>>({});
 
+  const [isSaving, setIsSaving] = useState(false);
+
   const subtotal = order.items.reduce((sum: number, item: any, idx: number) => {
     const extrasSum = item.extras.reduce((es: number, e: any) => es + (e.price * e.quantity), 0);
     const itemSubtotal = (item.price * item.quantity) + extrasSum;
@@ -1339,6 +1359,8 @@ const BillCreationView = ({ order, onSave, settings }: any) => {
   const total = subtotal - discountAmt + taxAmt;
 
   const handleSave = () => {
+    if (isSaving) return;
+    setIsSaving(true);
     const updatedItems = order.items.map((item: any, idx: number) => ({
       ...item,
       discount: itemDiscounts[idx]
@@ -1464,9 +1486,13 @@ const BillCreationView = ({ order, onSave, settings }: any) => {
 
       <button 
         onClick={handleSave}
-        className="w-full bg-accent text-white py-5 rounded-[24px] font-bold text-lg active:scale-95 transition-all shadow-lg shadow-accent/20"
+        disabled={isSaving}
+        className={cn(
+          "w-full py-5 rounded-[24px] font-bold text-lg active:scale-95 transition-all shadow-lg shadow-accent/20",
+          isSaving ? "bg-accent/50 text-white/50 cursor-not-allowed" : "bg-accent text-white"
+        )}
       >
-        Complete & Save Bill
+        {isSaving ? "Saving..." : "Complete & Save Bill"}
       </button>
     </div>
   );
