@@ -164,12 +164,6 @@ export default function App() {
 
   // Notification Logic
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(err => console.error('SW registration failed:', err));
-    }
-  }, []);
-
-  useEffect(() => {
     if (!("Notification" in window)) return;
     if (Notification.permission === "default") {
       Notification.requestPermission();
