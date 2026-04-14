@@ -14,98 +14,78 @@
   }
 
   body.light {
+    --color-bg-dark: var(--light-bg-color, #ffffff);
+    --color-bg-light: var(--bg-color, #0a0a0a);
     @apply bg-bg-light text-black;
   }
 
-  /* Backgrounds */
-  body.light .bg-bg-dark {
-    @apply bg-bg-light;
-  }
-
-  body.light .bg-white\/5 {
-    @apply bg-black/5;
-  }
-
-  body.light .bg-white\/10 {
-    @apply bg-black/10;
-  }
-
-  body.light .bg-white\/80 {
-    @apply bg-black/10;
-  }
-
-  /* bg-black overlays: soften heavy darks, keep modal scrim readable */
-  body.light .bg-black\/40 {
-    background-color: rgba(0, 0, 0, 0.08);
-  }
-
-  body.light .bg-black\/60 {
-    background-color: rgba(200, 200, 200, 0.7);
-  }
-
-  /* bg-black/80 modal scrim — keep it dark so content is readable */
-
-  /* Borders */
-  body.light .border-white\/5 {
-    @apply border-black/5;
-  }
-
-  body.light .border-white\/10 {
-    @apply border-black/10;
-  }
-
-  /* Text */
-  body.light .text-white {
-    @apply text-black;
-  }
-
-  body.light .text-white\/10 {
-    @apply text-black/10;
-  }
-
-  body.light .text-white\/20 {
-    @apply text-black/20;
-  }
-
-  body.light .text-white\/30 {
-    @apply text-black/30;
-  }
-
-  body.light .text-white\/40 {
-    @apply text-black/40;
-  }
-
-  body.light .text-white\/50 {
-    @apply text-black/50;
-  }
-
-  body.light .text-white\/60 {
-    @apply text-black/60;
-  }
-
-  /* Hover states */
-  body.light .hover\:text-white\/60:hover {
-    @apply text-black/60;
-  }
-
-  body.light .hover\:bg-white\/5:hover {
-    @apply bg-black/5;
-  }
-
-  body.light .hover\:bg-white\/20:hover {
-    @apply bg-black/20;
-  }
-
-  /* Blur overlay backdrop */
   body.light .blur-overlay {
-    @apply bg-bg-light/70;
+    background-color: rgba(255, 255, 255, 0.6) !important;
   }
 
-  /* Input fields — ensure legible text on light bg */
-  body.light input,
-  body.light textarea,
-  body.light select {
-    @apply text-black placeholder:text-black/30;
+  /* Global overrides for light mode to fix white-on-white and dark-on-dark issues */
+  body.light [class*="text-white"] {
+    color: #000000 !important;
+  }
+
+  body.light [class*="text-white/40"],
+  body.light [class*="text-white/50"],
+  body.light [class*="text-white/60"] {
+    color: rgba(0, 0, 0, 0.5) !important;
+  }
+
+  body.light [class*="text-white/10"],
+  body.light [class*="text-white/20"],
+  body.light [class*="text-white/30"] {
+    color: rgba(0, 0, 0, 0.2) !important;
+  }
+
+  body.light [class*="bg-white/"] {
+    background-color: rgba(0, 0, 0, 0.05) !important;
+  }
+
+  body.light [class*="bg-black/"] {
+    background-color: rgba(255, 255, 255, 0.6) !important;
+  }
+
+  body.light [class*="border-white/"] {
+    border-color: rgba(0, 0, 0, 0.1) !important;
+  }
+
+  body.light .bg-bg-dark,
+  body.light [class*="bg-bg-dark"],
+  body.light .bg-black,
+  body.light [class*="bg-black/60"],
+  body.light [class*="bg-black/40"] {
+    background-color: var(--color-bg-dark) !important;
+  }
+
+  body.light .border-bg-dark,
+  body.light [class*="border-white/"] {
+    border-color: rgba(0, 0, 0, 0.1) !important;
+  }
+
+  /* Contrast protectors: Ensure white text stays white on colored backgrounds in light mode */
+  body.light .bg-accent,
+  body.light [class*="bg-accent"],
+  body.light .bg-red-500,
+  body.light [class*="bg-red-500"],
+  body.light .bg-green-500,
+  body.light [class*="bg-green-500"],
+  body.light .bg-blue-500,
+  body.light [class*="bg-blue-500"],
+  body.light .bg-yellow-500,
+  body.light [class*="bg-yellow-500"] {
+    color: #ffffff !important;
+  }
+
+  body.light .bg-accent *,
+  body.light [class*="bg-accent"] *,
+  body.light .bg-red-500 *,
+  body.light [class*="bg-red-500"] *,
+  body.light .bg-green-500 *,
+  body.light [class*="bg-green-500"] * {
+    color: #ffffff !important;
   }
 
   /* Apply custom radius to common elements */
@@ -117,21 +97,34 @@
 @keyframes smooth-flicker {
   0%, 100% { 
     border-color: var(--accent-color, #ff5300); 
-    opacity: 1;
+    box-shadow: 0 0 0px var(--accent-color, #ff5300); 
   }
   50% { 
-    border-color: rgba(255, 255, 255, 0.2); 
-    opacity: 0.8;
+    border-color: rgba(255, 255, 255, 0.1); 
+    box-shadow: 0 0 15px var(--accent-color, #ff5300); 
   }
 }
 
 .animate-smooth-flicker {
-  animation: smooth-flicker 2s ease-in-out infinite;
-  will-change: border-color, opacity;
+  animation: smooth-flicker 1s ease-in-out infinite;
+}
+
+@keyframes glow-flicker {
+  0%, 100% { 
+    text-shadow: 0 0 10px var(--accent-color, #ff5300), 0 0 20px var(--accent-color, #ff5300);
+    opacity: 1;
+  }
+  50% { 
+    text-shadow: 0 0 2px var(--accent-color, #ff5300);
+    opacity: 0.7;
+  }
+}
+
+.animate-glow-flicker {
+  animation: glow-flicker 0.3s ease-in-out infinite;
 }
 
 .blur-overlay {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  will-change: backdrop-filter;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }

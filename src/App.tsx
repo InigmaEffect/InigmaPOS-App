@@ -10,6 +10,8 @@ import {
   Search,
   Trash2,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Clock,
   CheckCircle2,
   AlertCircle,
@@ -1052,8 +1054,15 @@ export default function App() {
 
 // --- Sub-Views ---
 
-const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, setViewingBill, setToast, onEdit, onDismissAlert, settings, billingAlerts, dismissedAlerts, dismissedOverdue }: any) => {
+const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, setViewingBill, setToast, onEdit, onDismissAlert, settings, billingAlerts, dismissedAlerts, dismissedOverdue, forceExpand }: any) => {
   const [timeLeft, setTimeLeft] = useState(0);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (forceExpand !== undefined) {
+      setIsExpanded(forceExpand);
+    }
+  }, [forceExpand]);
 
   useEffect(() => {
     const calculate = () => {
@@ -1116,19 +1125,52 @@ const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, 
             )}
           </div>
           <p className="text-lg font-bold text-accent">{formatCurrency(totalAmount)}</p>
-          <div className="mt-1 space-y-0.5">
-            {order.items.map((item: any, idx: number) => (
-              <div key={idx} className="flex flex-col">
-                <p className="text-[11px] font-bold truncate">• {item.name} x {item.quantity}</p>
-                {(item.extras?.length > 0 || item.instructions) && (
-                  <p className="text-[9px] text-white/40 ml-3 leading-tight">
-                    {item.extras?.map((e: any) => `${e.name} (x${e.quantity})`).join(', ')}
-                    {item.instructions && ` | ${item.instructions}`}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
+          
+          <AnimatePresence>
+            {isExpanded && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="mt-1 space-y-0.5 overflow-hidden"
+              >
+                {order.items.map((item: any, idx: number) => (
+                  <div key={idx} className="flex flex-col">
+                    <p className="text-[11px] font-bold truncate">• {item.name} x {item.quantity}</p>
+                    {(item.extras?.length > 0 || item.instructions) && (
+                      <p className="text-[9px] text-white/40 ml-3 leading-tight">
+                        {item.extras?.map((e: any) => `${e.name} (x${e.quantity})`).join(', ')}
+                        {item.instructions && ` | ${item.instructions}`}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {!isExpanded && (
+            <div className="mt-1 flex items-center gap-2">
+              <p className="text-[10px] text-white/40 font-medium">
+                {order.items.length} {order.items.length === 1 ? 'item' : 'items'} • {order.items.map((i: any) => i.name).join(', ').slice(0, 30)}...
+              </p>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setIsExpanded(true); }}
+                className="text-accent text-[10px] font-bold flex items-center gap-0.5"
+              >
+                Show More <ChevronDown size={10} />
+              </button>
+            </div>
+          )}
+          
+          {isExpanded && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }}
+              className="mt-2 text-accent text-[10px] font-bold flex items-center gap-0.5"
+            >
+              Show Less <ChevronUp size={10} />
+            </button>
+          )}
         </div>
         <div className="text-right ml-4">
           <div className={cn(
@@ -1216,6 +1258,7 @@ const OrderCard = ({ order, updateStatus, deleteOrder, setSelectedOrder, bills, 
 
 const OrdersView = ({ orders, updateStatus, deleteOrder, setSelectedOrder, openNewOrder, bills, setViewingBill, setToast, onEdit, onDismissAlert, settings, billingAlerts, dismissedAlerts, dismissedOverdue }: any) => {
   const [filter, setFilter] = useState('all');
+  const [allExpanded, setAllExpanded] = useState(false);
   const tabs = ['all', 'active', 'to-bill', 'completed'];
 
   const filteredOrders = orders.filter((o: any) => filter === 'all' || o.status === filter);
@@ -1224,12 +1267,21 @@ const OrdersView = ({ orders, updateStatus, deleteOrder, setSelectedOrder, openN
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold tracking-tighter">Orders</h1>
-        <button 
-          onClick={openNewOrder}
-          className="bg-accent text-white p-2.5 rounded-xl shadow-lg shadow-accent/20 active:scale-95 transition-all"
-        >
-          <Plus size={20} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setAllExpanded(!allExpanded)}
+            className="bg-white/5 border border-white/10 text-white/60 px-3 py-2 rounded-xl text-[10px] font-bold flex items-center gap-1.5 active:scale-95 transition-all"
+          >
+            {allExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {allExpanded ? 'Collapse All' : 'Expand All'}
+          </button>
+          <button 
+            onClick={openNewOrder}
+            className="bg-accent text-white p-2.5 rounded-xl shadow-lg shadow-accent/20 active:scale-95 transition-all"
+          >
+            <Plus size={20} />
+          </button>
+        </div>
       </div>
       <div className="flex gap-1 pb-1 no-scrollbar">
         {tabs.map(t => {
@@ -1279,6 +1331,7 @@ const OrdersView = ({ orders, updateStatus, deleteOrder, setSelectedOrder, openN
             billingAlerts={billingAlerts}
             dismissedAlerts={dismissedAlerts}
             dismissedOverdue={dismissedOverdue}
+            forceExpand={allExpanded}
           />
         ))}
       </motion.div>
