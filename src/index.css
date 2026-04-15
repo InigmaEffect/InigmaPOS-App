@@ -51,11 +51,17 @@
     border-color: rgba(0, 0, 0, 0.1) !important;
   }
 
+  body.light [class*="bg-black/60"] {
+    background-color: rgba(255, 255, 255, 0.6) !important;
+  }
+
+  body.light [class*="bg-black/40"] {
+    background-color: rgba(255, 255, 255, 0.4) !important;
+  }
+
   body.light .bg-bg-dark,
   body.light [class*="bg-bg-dark"],
-  body.light .bg-black,
-  body.light [class*="bg-black/60"],
-  body.light [class*="bg-black/40"] {
+  body.light .bg-black {
     background-color: var(--color-bg-light) !important;
   }
 
@@ -64,26 +70,20 @@
     border-color: rgba(0, 0, 0, 0.1) !important;
   }
 
-  /* Contrast protectors: Ensure white text stays white on colored backgrounds in light mode */
+  /* Contrast protectors: Ensure white text stays white on solid colored backgrounds in light mode */
   body.light .bg-accent,
-  body.light [class*="bg-accent"],
   body.light .bg-red-500,
-  body.light [class*="bg-red-500"],
   body.light .bg-green-500,
-  body.light [class*="bg-green-500"],
   body.light .bg-blue-500,
-  body.light [class*="bg-blue-500"],
-  body.light .bg-yellow-500,
-  body.light [class*="bg-yellow-500"] {
+  body.light .bg-yellow-500 {
     color: #ffffff !important;
   }
 
   body.light .bg-accent *,
-  body.light [class*="bg-accent"] *,
   body.light .bg-red-500 *,
-  body.light [class*="bg-red-500"] *,
   body.light .bg-green-500 *,
-  body.light [class*="bg-green-500"] * {
+  body.light .bg-blue-500 *,
+  body.light .bg-yellow-500 * {
     color: #ffffff !important;
   }
 

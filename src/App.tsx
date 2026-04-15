@@ -75,7 +75,7 @@ const BottomNav = ({ activeTab, navigateTo, counts }: { activeTab: string, navig
               onClick={() => navigateTo(tab.id)}
               className={cn(
                 "relative flex-1 flex flex-col items-center py-2 rounded-2xl transition-all duration-300",
-                isActive ? "text-accent bg-accent/10" : "text-white/40 hover:text-white/60"
+                isActive ? "text-accent bg-accent/20" : "text-white/40 hover:text-white/60"
               )}
             >
               <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
@@ -822,7 +822,7 @@ export default function App() {
             onClick={() => setActiveTab('orders')}
             className={cn(
               "p-4 rounded-[20px] border transition-all text-left space-y-0.5",
-              activeOrders.length > 0 ? "bg-accent/10 border-accent animate-pulse" : "bg-white/5 border-white/10"
+              activeOrders.length > 0 ? "bg-accent/20 border-accent animate-pulse" : "bg-white/5 border-white/10"
             )}
           >
             <p className="text-[10px] font-medium uppercase tracking-widest text-white/40">Active Orders</p>
@@ -839,7 +839,7 @@ export default function App() {
             onClick={() => setActiveTab('orders')}
             className={cn(
               "p-4 rounded-[20px] border transition-all text-left space-y-0.5",
-              toBillOrders.length > 0 ? "bg-yellow-500/10 border-yellow-500 animate-smooth-flicker" : "bg-white/5 border-white/10"
+              toBillOrders.length > 0 ? "bg-yellow-500/20 border-yellow-500 animate-smooth-flicker" : "bg-white/5 border-white/10"
             )}
           >
             <p className="text-[10px] font-medium uppercase tracking-widest text-white/40">To Bill</p>
