@@ -898,6 +898,20 @@ export default function App() {
   return (
     <div className="min-h-screen pb-24 px-0 pt-4 max-w-lg mx-auto overflow-x-hidden">
       <AnimatePresence mode="wait">
+        <AnimatePresence>
+          {activeTab === 'orders' && (
+            <motion.button 
+              initial={{ scale: 0, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0, opacity: 0, y: 20 }}
+              onClick={() => openModal(setIsOrderModalOpen, true, 'order-create')}
+              className="fixed bottom-28 right-6 w-14 h-14 bg-accent text-white rounded-full shadow-2xl flex items-center justify-center active:scale-95 transition-all z-50"
+            >
+              <Plus size={28} />
+            </motion.button>
+          )}
+        </AnimatePresence>
+
         <motion.div
           key={activeTab}
           initial={{ opacity: 0, scale: 0.98 }}
@@ -1009,36 +1023,13 @@ export default function App() {
       </Modal>
 
       <Modal isOpen={isMenuModalOpen} onClose={handleBack} title="Manage Menu" fullScreen>
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-white/40">Menu Items ({menu.length})</h3>
-            <button 
-              onClick={() => openModal(setEditingItem, { id: crypto.randomUUID(), name: '', price: 0, prepTime: 15, category: '', extras: [], createdAt: Date.now(), customOrder: menu.length }, 'menu-edit')}
-              className="bg-accent text-white px-4 py-2 rounded-xl text-xs font-bold"
-            >
-              Add New
-            </button>
-          </div>
-          <div className="space-y-3">
-            {menu.map((item: any) => (
-              <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-white/5 overflow-hidden">
-                    {item.image ? <img src={item.image} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-white/10"><UtensilsCrossed size={20} /></div>}
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm">{item.name}</p>
-                    <p className="text-accent font-bold text-xs">{formatCurrency(item.price)}</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => openModal(setEditingItem, item, 'menu-edit')} className="p-2 text-white/40 hover:text-white transition-colors"><ChevronRight size={20} /></button>
-                  <button onClick={() => deleteMenuItem(item.id)} className="p-2 text-red-500/40 hover:text-red-500 transition-colors"><Trash2 size={20} /></button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ManageMenuView 
+          menu={menu} 
+          setMenu={setMenu} 
+          setEditingItem={(val: any) => openModal(setEditingItem, val, 'menu-edit')} 
+          deleteMenuItem={deleteMenuItem} 
+          formatCurrency={formatCurrency}
+        />
       </Modal>
 
       <Modal isOpen={!!editingItem} onClose={handleBack} title={editingItem?.name ? "Edit Item" : "Add Item"}>
@@ -1274,12 +1265,6 @@ const OrdersView = ({ orders, updateStatus, deleteOrder, setSelectedOrder, openN
           >
             {allExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             {allExpanded ? 'Collapse All' : 'Expand All'}
-          </button>
-          <button 
-            onClick={openNewOrder}
-            className="bg-accent text-white p-2.5 rounded-xl shadow-lg shadow-accent/20 active:scale-95 transition-all"
-          >
-            <Plus size={20} />
           </button>
         </div>
       </div>
@@ -2118,7 +2103,7 @@ const BillsView = ({ bills, deleteBill, settings, orders, setViewingOrder, setTo
   );
 };
 
-const SortableMenuItem = ({ item, setEditingItem, isCustomSort }: any) => {
+const SortableManageItem = ({ item, setEditingItem, deleteMenuItem, formatCurrency }: any) => {
   const {
     attributes,
     listeners,
@@ -2126,7 +2111,7 @@ const SortableMenuItem = ({ item, setEditingItem, isCustomSort }: any) => {
     transform,
     transition,
     isDragging
-  } = useSortable({ id: item.id, disabled: !isCustomSort });
+  } = useSortable({ id: item.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -2136,24 +2121,115 @@ const SortableMenuItem = ({ item, setEditingItem, isCustomSort }: any) => {
   };
 
   return (
-    <motion.div 
+    <div 
       ref={setNodeRef}
       style={style}
+      className="bg-white/5 border border-white/10 rounded-2xl p-4 flex justify-between items-center select-none"
+    >
+      <div className="flex items-center gap-4">
+        <div 
+          {...attributes} 
+          {...listeners}
+          className="p-2 bg-white/5 rounded-lg text-white/20 hover:text-white/60 cursor-grab active:cursor-grabbing"
+        >
+          <GripVertical size={18} />
+        </div>
+        <div className="w-12 h-12 rounded-xl bg-white/5 overflow-hidden flex-shrink-0">
+          {item.image ? <img src={item.image} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-white/10"><UtensilsCrossed size={20} /></div>}
+        </div>
+        <div className="min-w-0">
+          <p className="font-bold text-sm truncate">{item.name}</p>
+          <p className="text-accent font-bold text-xs">{formatCurrency(item.price)}</p>
+        </div>
+      </div>
+      <div className="flex gap-1">
+        <button onClick={() => setEditingItem(item)} className="p-2 text-white/40 hover:text-white transition-colors"><ChevronRight size={20} /></button>
+        <button onClick={() => deleteMenuItem(item.id)} className="p-2 text-red-500/40 hover:text-red-500 transition-colors"><Trash2 size={20} /></button>
+      </div>
+    </div>
+  );
+};
+
+const ManageMenuView = ({ menu, setMenu, setEditingItem, deleteMenuItem, formatCurrency }: any) => {
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = menu.findIndex((i: any) => i.id === active.id);
+      const newIndex = menu.findIndex((i: any) => i.id === over.id);
+      const newMenu = arrayMove(menu, oldIndex, newIndex);
+      
+      const db = await getDB();
+      const updatedMenu = newMenu.map((item: any, idx: number) => ({
+        ...item,
+        customOrder: idx
+      }));
+      
+      const tx = db.transaction('menu', 'readwrite');
+      await Promise.all(updatedMenu.map(item => tx.store.put(item)));
+      await tx.done;
+      
+      setMenu(updatedMenu);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-sm font-bold uppercase tracking-widest text-white/40">Menu Items ({menu.length})</h3>
+        <button 
+          onClick={() => setEditingItem({ id: crypto.randomUUID(), name: '', price: 0, prepTime: 15, category: '', extras: [], createdAt: Date.now(), customOrder: menu.length })}
+          className="bg-accent text-white px-4 py-2 rounded-xl text-xs font-bold"
+        >
+          Add New
+        </button>
+      </div>
+      
+      <DndContext 
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext 
+          items={menu.map((i: any) => i.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-3">
+            {menu.map((item: any) => (
+              <SortableManageItem 
+                key={item.id} 
+                item={item} 
+                setEditingItem={setEditingItem} 
+                deleteMenuItem={deleteMenuItem} 
+                formatCurrency={formatCurrency}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
+  );
+};
+
+const SortableMenuItem = ({ item, setEditingItem }: any) => {
+  return (
+    <motion.div 
       variants={{
         hidden: { opacity: 0, y: 10 },
         visible: { opacity: 1, y: 0 }
       }}
       className="bg-white/5 border border-white/10 rounded-[20px] overflow-hidden group relative"
     >
-      {isCustomSort && (
-        <div 
-          {...attributes} 
-          {...listeners}
-          className="absolute top-2 left-2 z-10 p-1.5 bg-black/40 blur-overlay rounded-lg text-white/40 hover:text-white cursor-grab active:cursor-grabbing"
-        >
-          <GripVertical size={14} />
-        </div>
-      )}
       <div className="aspect-square bg-white/5 relative">
         {item.image ? (
           <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
@@ -2184,40 +2260,6 @@ const MenuView = ({ menu, setMenu, setEditingItem, deleteItem, settings, saveSet
   const [activeCategory, setActiveCategory] = useState('All');
   const categories = ['All', ...Array.from(new Set(menu.map((item: any) => item.category).filter(Boolean)))];
   
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = menu.findIndex((i: any) => i.id === active.id);
-      const newIndex = menu.findIndex((i: any) => i.id === over.id);
-      const newMenu = arrayMove(menu, oldIndex, newIndex);
-      
-      // Update customOrder for all items
-      const db = await getDB();
-      const updatedMenu = newMenu.map((item: any, idx: number) => ({
-        ...item,
-        customOrder: idx
-      }));
-      
-      // Batch update in DB
-      const tx = db.transaction('menu', 'readwrite');
-      await Promise.all(updatedMenu.map(item => tx.store.put(item)));
-      await tx.done;
-      
-      setMenu(updatedMenu);
-    }
-  };
-
   const sortedMenu = sortMenu(menu, settings.menuSortMethod, settings.menuSortDirection);
   const filteredMenu = activeCategory === 'All' 
     ? sortedMenu 
@@ -2299,38 +2341,26 @@ const MenuView = ({ menu, setMenu, setEditingItem, deleteItem, settings, saveSet
         </div>
       </div>
 
-      <DndContext 
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
+      <motion.div 
+        initial="hidden"
+        animate="visible"
+        variants={{
+          visible: {
+            transition: {
+              staggerChildren: 0.05
+            }
+          }
+        }}
+        className="grid grid-cols-2 gap-3"
       >
-        <SortableContext 
-          items={filteredMenu.map((i: any) => i.id)}
-          strategy={rectSortingStrategy}
-        >
-          <motion.div 
-            initial="hidden"
-            animate="visible"
-            variants={{
-              visible: {
-                transition: {
-                  staggerChildren: 0.05
-                }
-              }
-            }}
-            className="grid grid-cols-2 gap-3"
-          >
-            {filteredMenu.map((item: any) => (
-              <SortableMenuItem 
-                key={item.id} 
-                item={item} 
-                setEditingItem={setEditingItem} 
-                isCustomSort={settings.menuSortMethod === 'custom' && activeCategory === 'All'}
-              />
-            ))}
-          </motion.div>
-        </SortableContext>
-      </DndContext>
+        {filteredMenu.map((item: any) => (
+          <SortableMenuItem 
+            key={item.id} 
+            item={item} 
+            setEditingItem={setEditingItem} 
+          />
+        ))}
+      </motion.div>
     </div>
   );
 };

@@ -14,9 +14,8 @@
   }
 
   body.light {
-    --color-bg-dark: var(--light-bg-color, #ffffff);
-    --color-bg-light: var(--bg-color, #0a0a0a);
-    @apply bg-bg-light text-black;
+    background-color: var(--color-bg-light) !important;
+    color: #000000 !important;
   }
 
   body.light .blur-overlay {
@@ -57,7 +56,7 @@
   body.light .bg-black,
   body.light [class*="bg-black/60"],
   body.light [class*="bg-black/40"] {
-    background-color: var(--color-bg-dark) !important;
+    background-color: var(--color-bg-light) !important;
   }
 
   body.light .border-bg-dark,
