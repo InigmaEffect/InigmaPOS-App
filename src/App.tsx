@@ -249,7 +249,7 @@ export default function App() {
         return;
       }
       const device = await (navigator as any).bluetooth.requestDevice({
-        filters: [{ namePrefix: 'Cat' }],
+        acceptAllDevices: true,
         optionalServices: ['0000ae30-0000-1000-8000-00805f9b34fb']
       });
       const server = await device.gatt.connect();
