@@ -19,7 +19,7 @@
   }
 
   body.light .blur-overlay {
-    background-color: rgba(255, 255, 255, 0.6) !important;
+    background-color: rgba(255, 255, 255, 0.4) !important;
   }
 
   /* Global overrides for light mode to fix white-on-white and dark-on-dark issues */
@@ -124,6 +124,9 @@
 }
 
 .blur-overlay {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  /* Force hardware acceleration for better blur reliability in Chrome */
+  transform: translateZ(0);
+  will-change: backdrop-filter;
 }

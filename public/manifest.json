@@ -1,7 +1,7 @@
 {
-  "name": "Orderology",
-  "short_name": "Orderology",
-  "description": "Professional Order Taking App",
+  "name": "Inigma POS",
+  "short_name": "Inigma",
+  "description": "Professional Personal POS",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

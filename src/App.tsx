@@ -26,7 +26,9 @@ import {
   ArrowUpZA,
   ArrowDownZA,
   GripVertical,
-  ArrowUpDown
+  ArrowUpDown,
+  Printer,
+  Bluetooth
 } from 'lucide-react';
 import { 
   DndContext, 
@@ -159,6 +161,7 @@ export default function App() {
   const backPressCount = useRef(0);
 
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [printerCharacteristic, setPrinterCharacteristic] = useState<any>(null);
   const [billingAlerts, setBillingAlerts] = useState<Record<string, number>>({}); // orderId -> lastNotifiedLevel
   const [dismissedAlerts, setDismissedAlerts] = useState<Record<string, number>>({}); // orderId -> dismissedLevel
   const [dismissedOverdue, setDismissedOverdue] = useState<Record<string, boolean>>({}); // orderId -> isDismissed
@@ -238,6 +241,66 @@ export default function App() {
   };
 
   const playAlertSound = () => playSound('threshold');
+
+  const connectPrinter = async () => {
+    try {
+      if (!(navigator as any).bluetooth) {
+        setToast({ message: "Bluetooth not supported on this browser/device" });
+        return;
+      }
+      const device = await (navigator as any).bluetooth.requestDevice({
+        filters: [{ namePrefix: 'Cat' }],
+        optionalServices: ['0000ae30-0000-1000-8000-00805f9b34fb']
+      });
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService('0000ae30-0000-1000-8000-00805f9b34fb');
+      const characteristic = await service.getCharacteristic('0000ae31-0000-1000-8000-00805f9b34fb');
+      setPrinterCharacteristic(characteristic);
+      setToast({ message: "Printer Connected!" });
+    } catch (error) {
+      console.error(error);
+      setToast({ message: "Failed to connect printer" });
+    }
+  };
+
+  const printBillToCat = async (bill: Bill) => {
+    if (!printerCharacteristic) {
+      setToast({ message: "Please connect printer first" });
+      return;
+    }
+
+    try {
+      let text = `\n${settings.billHeader}\n`;
+      text += `Order #${bill.orderNo}\n`;
+      text += `${format(bill.timestamp, 'yyyy-MM-dd HH:mm')}\n`;
+      text += `--------------------------------\n`;
+      bill.items.forEach(item => {
+        const itemSubtotal = (item.price * item.quantity) + item.extras.reduce((s:any,e:any)=>s+(e.price*e.quantity),0);
+        text += `${item.quantity}x ${item.name}\n`;
+        text += `   ${formatCurrency(itemSubtotal)}\n`;
+      });
+      text += `--------------------------------\n`;
+      text += `Subtotal: ${formatCurrency(bill.subtotal)}\n`;
+      const discAmt = bill.discount.type === 'percent' ? (bill.subtotal * (bill.discount.value / 100)) : bill.discount.value;
+      text += `Discount: -${formatCurrency(discAmt)}\n`;
+      text += `Tax: +${formatCurrency((bill.subtotal - discAmt) * (bill.taxPercent / 100))}\n`;
+      text += `TOTAL: ${formatCurrency(bill.total)}\n`;
+      text += `--------------------------------\n`;
+      text += `${settings.billFooter}\n`;
+
+      const encoded = new TextEncoder().encode(text + '\n\n\n\n');
+      const chunkSize = 20;
+      for (let i = 0; i < encoded.length; i += chunkSize) {
+        const chunk = encoded.slice(i, i + chunkSize);
+        await printerCharacteristic.writeValue(chunk);
+      }
+      setToast({ message: "Bill Printed!" });
+    } catch (error) {
+      console.error(error);
+      setToast({ message: "Printing failed" });
+      setPrinterCharacteristic(null);
+    }
+  };
 
   const closeModalByName = (name: string) => {
     if (name === 'order-create') setIsOrderModalOpen(false);
@@ -808,8 +871,22 @@ export default function App() {
             <h1 className="text-2xl font-bold tracking-tighter">Dashboard</h1>
             <p className="text-white/50 text-xs">{format(new Date(), 'EEEE, MMMM do')}</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
-            <UtensilsCrossed size={20} />
+          <div className="flex gap-2">
+            <button 
+              onClick={connectPrinter}
+              className={cn(
+                "h-10 px-3 rounded-xl flex items-center gap-2 text-xs font-bold transition-all border",
+                printerCharacteristic 
+                  ? "bg-green-500/10 text-green-500 border-green-500/20" 
+                  : "bg-white/5 text-white/40 border-white/10 hover:text-white/60"
+              )}
+            >
+              <Bluetooth size={16} className={printerCharacteristic ? "animate-pulse" : ""} />
+              {printerCharacteristic ? 'Connected' : 'Connect'}
+            </button>
+            <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
+              <UtensilsCrossed size={20} />
+            </div>
           </div>
         </header>
 
@@ -922,9 +999,9 @@ export default function App() {
         >
           {activeTab === 'home' && renderHome()}
           {activeTab === 'orders' && <OrdersView orders={orders} updateStatus={updateOrderStatus} deleteOrder={deleteOrder} setSelectedOrder={(val: any) => openModal(setSelectedOrder, val, 'order-details')} openNewOrder={() => openModal(setIsOrderModalOpen, true, 'order-create')} bills={bills} setViewingBill={(val: any) => openModal(setViewingBill, val, 'bill-details')} setToast={setToast} onEdit={startEditingOrder} onDismissAlert={dismissAlert} settings={settings} billingAlerts={billingAlerts} dismissedAlerts={dismissedAlerts} dismissedOverdue={dismissedOverdue} />}
-          {activeTab === 'bills' && <BillsView bills={bills} deleteBill={deleteBill} settings={settings} orders={orders} setViewingOrder={(val: any) => openModal(setViewingOrder, val, 'order-view')} setToast={setToast} setViewingBill={(val: any) => openModal(setViewingBill, val, 'bill-details')} />}
+          {activeTab === 'bills' && <BillsView bills={bills} deleteBill={deleteBill} settings={settings} orders={orders} setViewingOrder={(val: any) => openModal(setViewingOrder, val, 'order-view')} setToast={setToast} setViewingBill={(val: any) => openModal(setViewingBill, val, 'bill-details')} connectPrinter={connectPrinter} printerCharacteristic={printerCharacteristic} />}
           {activeTab === 'menu' && <MenuView menu={menu} setMenu={setMenu} setEditingItem={(val: any) => openModal(setEditingItem, val, 'menu-edit')} deleteItem={deleteMenuItem} setIsMenuModalOpen={(val: any) => openModal(setIsMenuModalOpen, val, 'menu-manage')} settings={settings} saveSettings={saveSettings} sortMenu={sortMenu} />}
-          {activeTab === 'settings' && <SettingsView settings={settings} saveSettings={saveSettings} bills={bills} setBills={setBills} menu={menu} setMenu={setMenu} orders={orders} setOrders={setOrders} />}
+          {activeTab === 'settings' && <SettingsView settings={settings} saveSettings={saveSettings} bills={bills} setBills={setBills} menu={menu} setMenu={setMenu} orders={orders} setOrders={setOrders} connectPrinter={connectPrinter} printerCharacteristic={printerCharacteristic} />}
         </motion.div>
       </AnimatePresence>
 
@@ -937,7 +1014,7 @@ export default function App() {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md text-black px-4 py-2 rounded-full font-bold text-xs shadow-xl z-[200] flex items-center gap-3"
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-xl text-black px-4 py-2 rounded-full font-bold text-xs shadow-2xl z-[200] flex items-center gap-3 transform translate-z-0 border border-white/20"
           >
             <span>{toast.message}</span>
             {toast.orderId && (
@@ -995,7 +1072,7 @@ export default function App() {
       </Modal>
 
       <Modal isOpen={!!viewingBill} onClose={handleBack} title={`Bill #${viewingBill?.orderNo}`}>
-        {viewingBill && <BillDetailView bill={viewingBill} settings={settings} />}
+        {viewingBill && <BillDetailView bill={viewingBill} settings={settings} printToCat={() => printBillToCat(viewingBill)} printerCharacteristic={printerCharacteristic} connectPrinter={connectPrinter} />}
       </Modal>
 
       <Modal isOpen={!!viewingOrder} onClose={handleBack} title={`Order #${viewingOrder?.orderNo}`}>
@@ -1037,7 +1114,7 @@ export default function App() {
       </Modal>
 
       <Modal isOpen={!!billingOrder} onClose={handleBack} title="Create Bill">
-        {billingOrder && <BillCreationView order={billingOrder} onSave={(bill: any) => { handleCreateBill(bill); }} settings={settings} />}
+        {billingOrder && <BillCreationView order={billingOrder} onSave={(bill: any) => { handleCreateBill(bill); }} settings={settings} printToCat={(bill: any) => printBillToCat(bill)} printerCharacteristic={printerCharacteristic} connectPrinter={connectPrinter} />}
       </Modal>
     </div>
   );
@@ -1409,7 +1486,7 @@ const OrderDetailView = ({ order, onEdit }: { order: Order, onEdit: (o: Order) =
   );
 };
 
-const BillDetailView = ({ bill, settings }: { bill: Bill, settings: Settings }) => {
+function BillDetailView({ bill, settings, printToCat, printerCharacteristic, connectPrinter }: { bill: Bill, settings: Settings, printToCat: () => void, printerCharacteristic: any, connectPrinter: () => void }) {
   return (
     <div className="space-y-6">
       <div className="bg-white/5 p-6 rounded-[24px] border border-white/10 space-y-4">
@@ -1495,6 +1572,24 @@ const BillDetailView = ({ bill, settings }: { bill: Bill, settings: Settings }) 
         </div>
       </div>
       
+      <div className="pt-6 border-t border-white/5 space-y-4">
+        {printerCharacteristic ? (
+          <button 
+            onClick={printToCat}
+            className="w-full py-5 rounded-[24px] font-bold text-lg flex items-center justify-center gap-3 transition-all active:scale-95 bg-accent text-white shadow-lg shadow-accent/20"
+          >
+            <Printer size={24} /> Print Thermal Bill
+          </button>
+        ) : (
+          <button 
+            onClick={connectPrinter}
+            className="w-full py-5 rounded-[24px] font-bold text-lg flex items-center justify-center gap-3 transition-all active:scale-95 bg-white/5 border border-dashed border-white/20 text-white/40 hover:border-accent hover:text-accent"
+          >
+            <Bluetooth size={24} /> Connect Printer to Print
+          </button>
+        )}
+      </div>
+
       {!bill.isSold && (
         <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl flex items-center gap-3 text-red-500">
           <AlertCircle size={20} />
@@ -1728,7 +1823,7 @@ const OrderCreationView = ({ menu, onPlaceOrder, cart, setCart, overallInstructi
   );
 };
 
-const BillCreationView = ({ order, onSave, settings }: any) => {
+function BillCreationView({ order, onSave, settings, printToCat, printerCharacteristic, connectPrinter }: any) {
   const [discountType, setDiscountType] = useState<'flat' | 'percent'>('percent');
   const [discountValue, setDiscountValue] = useState(0);
   const [taxPercent, setTaxPercent] = useState(settings.defaultTax);
@@ -1757,15 +1852,37 @@ const BillCreationView = ({ order, onSave, settings }: any) => {
       ...item,
       discount: itemDiscounts[idx]
     }));
-    onSave({ 
+    const newBill = { 
+      orderNo: order.orderNo,
       items: updatedItems,
       discount: { type: discountType, value: discountValue }, 
       taxPercent, 
       isSold, 
       customFields,
       subtotal,
-      total
-    });
+      total,
+      timestamp: Date.now()
+    };
+    onSave(newBill);
+  };
+
+  const handlePrint = () => {
+    const printerItems = order.items.map((item: any, idx: number) => ({
+      ...item,
+      discount: itemDiscounts[idx]
+    }));
+    const printDraft = { 
+      orderNo: order.orderNo,
+      items: printerItems,
+      discount: { type: discountType, value: discountValue }, 
+      taxPercent, 
+      isSold, 
+      customFields,
+      subtotal,
+      total,
+      timestamp: Date.now()
+    };
+    printToCat(printDraft);
   };
 
   return (
@@ -1876,21 +1993,37 @@ const BillCreationView = ({ order, onSave, settings }: any) => {
         </div>
       )}
 
-      <button 
-        onClick={handleSave}
-        disabled={isSaving}
-        className={cn(
-          "w-full py-5 rounded-[24px] font-bold text-lg active:scale-95 transition-all shadow-lg shadow-accent/20",
-          isSaving ? "bg-accent/50 text-white/50 cursor-not-allowed" : "bg-accent text-white"
-        )}
-      >
-        {isSaving ? "Saving..." : "Complete & Save Bill"}
-      </button>
+      <div className="pt-6 border-t border-white/5 space-y-4">
+        <div className="flex gap-4">
+          {printerCharacteristic ? (
+            <button 
+              onClick={handlePrint}
+              className="flex-1 bg-white/5 border border-accent text-accent py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
+            >
+              <Printer size={18} /> Print Draft
+            </button>
+          ) : (
+            <button 
+              onClick={connectPrinter}
+              className="flex-1 bg-white/5 border border-dashed border-white/20 text-white/40 py-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-all"
+            >
+              <Bluetooth size={18} /> Connect Printer
+            </button>
+          )}
+          <button 
+            onClick={handleSave} 
+            disabled={isSaving}
+            className="flex-[2] bg-accent text-white py-4 rounded-2xl font-bold text-sm shadow-lg shadow-accent/20 active:scale-95 transition-all"
+          >
+            {isSaving ? "Saving..." : "Confirm & Save Bill"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
 
-const BillsView = ({ bills, deleteBill, settings, orders, setViewingOrder, setToast, setViewingBill }: any) => {
+function BillsView({ bills, deleteBill, settings, orders, setViewingOrder, setToast, setViewingBill, connectPrinter, printerCharacteristic }: any) {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [isExporting, setIsExporting] = useState(false);
 
@@ -2022,14 +2155,26 @@ const BillsView = ({ bills, deleteBill, settings, orders, setViewingOrder, setTo
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold tracking-tighter">Bills</h1>
-        <button 
-          onClick={exportPDF}
-          disabled={isExporting || filteredBills.length === 0}
-          className="bg-white/5 border border-white/10 p-2.5 rounded-xl flex items-center gap-2 text-xs font-bold disabled:opacity-50"
-        >
-          <Download size={16} />
-          {isExporting ? 'Exporting...' : 'Export PDF'}
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={connectPrinter}
+            className={cn(
+              "bg-white/5 border border-white/10 p-2.5 rounded-xl flex items-center gap-2 text-xs font-bold transition-all",
+              printerCharacteristic && "bg-green-500/20 text-green-500 border-green-500/20"
+            )}
+          >
+            <Bluetooth size={16} className={printerCharacteristic ? "animate-pulse" : ""} />
+            {printerCharacteristic ? 'Connected' : 'Connect'}
+          </button>
+          <button 
+            onClick={exportPDF}
+            disabled={isExporting || filteredBills.length === 0}
+            className="bg-white/5 border border-white/10 p-2.5 rounded-xl flex items-center gap-2 text-xs font-bold disabled:opacity-50"
+          >
+            <Download size={16} />
+            {isExporting ? 'Exporting...' : 'Export PDF'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -2458,7 +2603,7 @@ const MenuItemForm = ({ item, onSave, onCancel, onDelete }: any) => {
   );
 };
 
-const SettingsView = ({ settings, saveSettings, bills, setBills, menu, setMenu, orders, setOrders }: any) => {
+function SettingsView({ settings, saveSettings, bills, setBills, menu, setMenu, orders, setOrders, connectPrinter, printerCharacteristic }: any) {
   const [formData, setFormData] = useState<Settings>(settings);
   const [newField, setNewField] = useState('');
 
@@ -2535,6 +2680,34 @@ const SettingsView = ({ settings, saveSettings, bills, setBills, menu, setMenu, 
             <Plus size={18} /> Import Data
             <input type="file" accept=".json" className="hidden" onChange={importData} />
           </label>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-sm font-bold uppercase tracking-widest text-white/40">Hardware & Connection</h3>
+          <div className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={cn("p-2 rounded-lg", printerCharacteristic ? "bg-green-500/20 text-green-500" : "bg-white/10 text-white/40")}>
+                <Printer size={20} />
+              </div>
+              <div>
+                <p className="text-sm font-bold">Cat Thermal Printer</p>
+                <p className="text-[10px] text-white/30 uppercase tracking-widest">
+                  {printerCharacteristic ? "Connected & Ready" : "Disconnected"}
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={connectPrinter}
+              className={cn(
+                "px-4 py-2 rounded-xl text-xs font-bold transition-all border",
+                printerCharacteristic 
+                  ? "bg-green-500/20 text-green-500 border-green-500/20" 
+                  : "bg-accent text-white border-accent"
+              )}
+            >
+              {printerCharacteristic ? "Reconnect" : "Connect"}
+            </button>
+          </div>
         </div>
 
         <div className="space-y-4">
